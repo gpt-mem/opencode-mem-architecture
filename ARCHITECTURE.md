@@ -1,13 +1,31 @@
 # OpenCode MEM — Operational Memory Architecture
 
-Status: proposed, implementation-ready roadmap (2026-10-09)
-Architecture home: `gpt-mem/opencode-mem-architecture`; implementation: `gpt-mem/opencode-mem` (`dev`).
+Status: implemented behind flag on `memory-context-v1`; roadmap active (2026-10-10)
+Architecture home: `gpt-mem/opencode-mem-architecture`; implementation: `gpt-mem/opencode-mem`, feature branch `memory-context-v1` (base `dev`).
 
 ## 1. Goal and scope
 
 Build a built-in, deterministic-first Operational Memory for coding workflows. Preserve original OpenCode sessions as the source of truth. Index tool calls and outcomes, Bash executions, files, PR/issues/commits, URLs, JSON/XML/HTML structure, code snippets, explicit decisions and constraints. Offer compact discovery and exact retrieval via native tools, CLI and MCP-compatible API. In the first release, implement a narrowly scoped, opt-in reduction of **old successful tool-result payloads** at provider request assembly, alongside tool-call indexing and overview. Keep all source history, system-context epochs and protocol envelopes intact. Full memory-first history replacement is deferred.
 
 This product is optimized first for small/cheap coding agents that need straightforward tool names and simple inputs. It must work offline without embeddings or LLM calls. Embeddings are optional after the deterministic baseline works; semantic retrieval must not silently replace exact/regex.
+
+## Чем наш форк отличается от основного OpenCode (актуально: 2026-10-10)
+
+Форк `gpt-mem/opencode-mem`, база — `origin/dev` (anomalyco/opencode). Вся наша работа лежит в двух ветках: `memory-context-v1` (4 коммита над `origin/dev`: `2027af9b94`, `5b14671755`, `bb04b082fd`, `e5570ec91b`) и `fix-shell-marker-retrieval` (PR #1, вливается в `memory-context-v1`). Больше веток с нашей работой нет; `no-context-trim` — пустой указатель на `dev`.
+
+| Компонент | Что добавлено | Файл в коде | Как включить | Статус |
+|---|---|---|---|---|
+| Memory-проекция контекста | `MemoryContext.project()` подменяет текст старых успешных tool-result и shell-выводов компакт-маркером (`kind/tool/call_id/status/preview/original/retrieve`) на копии сообщений, между загрузкой истории и `toLLMMessages`. Оригиналы в SQLite, порядок, ID и protocol-конверты не меняются | `packages/core/src/session/memory-context.ts`; хук в `packages/core/src/session/runner/llm.ts` (заменяет `entries.map(e => e.message)` на `MemoryContext.project(...)`) | env `OPENCODE_MEMORY_CONTEXT=1` (default off) | В `memory-context-v1`, коммит `2027af9b94`; тесты `packages/core/test/memory-context.test.ts` |
+| Правила неприкосновенности | Не сжимаются: незавершённые и error-тулы, provider-executed, memory-тулы, последние 2 user-turn, результаты < 2000 символов, shell без `callID` (нет пути ретрива) | там же: `DEFAULT_MIN_OUTPUT_CHARS=2000`, `DEFAULT_KEEP_RECENT_USER_TURNS=2`, `MEMORY_TOOL_PATTERN` | включается вместе с основным флагом | В `memory-context-v1` |
+| PII-тегирование (не сжатие) | `PII.tag()` находит email, phone, credit card (с Luhn), api_key (`sk-`/`ghp_`/`AKIA`/assignment); в маркер попадает строка `pii=...`, оригинал не изменяется | `packages/core/src/session/pii.ts` | автоматически при включённом `OPENCODE_MEMORY_CONTEXT`; отдельного флага нет | В `memory-context-v1`, коммит `e5570ec91b`; тесты `packages/core/test/pii.test.ts` |
+| Инструмент ретрива | `get_tool_call_details(call_id, include_output?, max_chars?)` — полный оригинал tool- и shell-вывода из SQLite по `call_id`; закрывает инвариант «ничего не скрыто» | `packages/core/src/tool/get-tool-call-details.ts`, регистрация в `packages/core/src/tool/builtins.ts` | без флага — входит в builtins | В `memory-context-v1`, коммит `5b14671755`; тесты `packages/core/test/tool-get-call-details.test.ts` |
+| Флаги | `OPENCODE_MEMORY_CONTEXT` (вкл. проекцию), `OPENCODE_MEMORY_CONTEXT_DEBUG` (лог `compacted=`/`protected_from=`) | `packages/core/src/flag/flag.ts` | env-переменные, default off | В `memory-context-v1` |
+| CI | Прогоняет memory-context, savings, PII и retrieval тесты + typecheck core; savings пишутся в job summary | `.github/workflows/mem-context.yml` | `push`/`pull_request`/`workflow_dispatch` | В `memory-context-v1`, коммиты `bb04b082fd`, `e5570ec91b` |
+| Shell-маркеры ретривятся (BUG-1) | В `shellMarker` добавлены `call_id=` и `retrieve=get_tool_call_details(...)`; shell без `callID` не сжимается; savings-тест ассертит оба вида маркеров (tool + shell) | `packages/core/src/session/memory-context.ts`, `packages/core/test/memory-context-savings.test.ts` | вместе с основным флагом | PR #1, ветка `fix-shell-marker-retrieval` — **ещё не влит в `memory-context-v1`** |
+
+Принципиально не меняется: `session/history.ts` (`entriesForRunner`), `session/context-epoch.ts`, `session/compaction`, `toLLMMessages`, tool protocol, SQLite-оригиналы, System Context Epoch.
+
+Новое с прошлой синхронизации доков (2026-10-10): env-флаги `OPENCODE_MEMORY_CONTEXT`/`OPENCODE_MEMORY_CONTEXT_DEBUG` в `flag/flag.ts`; новые файлы `session/memory-context.ts`, `session/pii.ts`, `tool/get-tool-call-details.ts`, `.github/workflows/mem-context.yml`; правки `session/runner/llm.ts` (хук проекции) и `tool/builtins.ts` (регистрация `GetToolCallDetailsTool`); открыт PR #1.
 
 ## 2. Existing OpenCode components to reuse (verified on `dev`)
 
