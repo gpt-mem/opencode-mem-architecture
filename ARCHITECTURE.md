@@ -134,7 +134,20 @@ See `CONTEXT_V1.md` for eligibility rules, source-reference guarantees, fallback
 | URLs/endpoints | Keep URL + method + status | SQLite `mem_entity_ref` | `find_agent_artifacts(kind="url")` |
 | Markdown/JSON/XML | Keep manifest + sections | SQLite `mem_artifact` + `mem_artifact_section` | `get_agent_artifact(artifact_id, section_id)` |
 | Decisions | Keep decision + why + timestamp | SQLite `mem_record` (type=decision) | `search_operational_memory(type="decision")` |
-| PII | Redact + separate table | SQLite `mem_pii` (encrypted) | Separate API with auth |
+
+### PII handling (no compression)
+
+PII is **not compressed** — it is **tagged and indexed** for discovery.
+
+| PII type | Detection | Storage | Retrieval |
+|----------|-----------|---------|-----------|
+| Email | Regex | SQLite `mem_pii` (tagged) | `find_pii(type="email")` |
+| Phone | Regex | SQLite `mem_pii` (tagged) | `find_pii(type="phone")` |
+| Credit card | Regex + Luhn | SQLite `mem_pii` (tagged) | `find_pii(type="credit_card")` |
+| API key | Pattern | SQLite `mem_pii` (tagged) | `find_pii(type="api_key")` |
+| Name | NER (optional) | SQLite `mem_pii` (tagged) | `find_pii(type="name")` |
+
+PII is **never hidden** — LLM can always retrieve it via `find_pii()`.
 
 ### Implementation steps
 
