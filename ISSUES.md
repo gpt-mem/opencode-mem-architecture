@@ -101,3 +101,15 @@ See `CONTEXT_V1.md`. Implement a flag-gated in-memory substitution of older comp
 - [x] Повторный A/B на том же харнессе (**2026-10-10**, ворктри на `eb5ceba251`, харнесс `/tmp/bench20`, сессии приаттачены к PR #22): одноповоротный сценарий — MEM on (новый default) **-cost parity** (−0.5%, $0.011548 → $0.011489, видимые токены −0.1%, hit 0.82, ответ верный); sliding до фикса +67.1%, batch=2 только +36.1%; 3-поворотный сценарий — MEM on **−1.2% cost, −19.1% provider-visible** (пошагово после компакции −86% видимых токенов), uncached +3.0%, все ответы верны; дебаг: повороты 1–2 байт-в-байт как off, один прыжок границы на повороте 3 (`protected_from=10 raw=10`), дальше append-only. Осталось: провайдер без prompt-cache (opt-in `OPENCODE_MEMORY_MIDTURN=1` покрывает, e2e-замер не делался)
 
 **Acceptance (2026-10-10):** «не дороже» — ✅ выполнено (cost parity одноповоротный, −1.2% трёхповоротный, задачи верны во всех руках); «текущая экономия токенов» — ✅ в мультиповоротной форме (−19.1% суммарно), ❌ в одноповоротной (−0.1% — осознанно: старая −44.7% и была причиной +70% стоимости; доступна opt-in `OPENCODE_MEMORY_MIDTURN=1`). Единственный путь к безусловной долларовой экономии на cache-прайсинге — компакция при первой доставке (маркер вместо полного результата сразу; оригинал уже в SQLite) — заведено отдельно: **GitHub #23**.
+
+## ISSUE-23 (GitHub #23, OPEN) — Compact at first delivery (B0, дизайн + prerequisite)
+
+Единственный путь к долларовой экономии на cache-прайсинге: не отправлять bulk больших tool-выводов в принципе — delivery-маркер при первой доставке, оригинал в SQLite. Дизайн: **`FIRST-DELIVERY.md`** (та же маркерная семантика; элигабельность bash/webfetch/websearch/read ≥2000 chars, env `OPENCODE_MEMORY_FIRST_DELIVERY` default off + `_MIN_CHARS`/`_TOOLS`; cache-safe append-only без инвалидаций; loop-breakers: превью в маркере, ретрив всегда оригинал, `full`/`offset` постраничность; acceptance ≥ −30% реальной стоимости, needle 100%). Дизайн вынесен на согласование — комментарий в GitHub #23; gate: не имплементировать delivery-режим до согласования.
+
+**Чеклист:**
+- [x] Design-док `FIRST-DELIVERY.md` + комментарий в issue #23
+- [x] Полный ретрив: `get_tool_call_details` V1+V2 `offset`/`full`/`total_chars` — PR #24, squash `4f0f3223c7` (закрыл и дыру #11: originals >8k раньше обрывались на 8k без пути к остатку)
+- [ ] Delivery-режим `project`/`projectV1` за `OPENCODE_MEMORY_FIRST_DELIVERY` (дефолт off)
+- [ ] Юнит-тесты delivery-маркеров + append-only префикс + flag-off байт-в-байт
+- [ ] Quality/loop-тест на LLM (маркер → ретрив → задача решается, ре-чит не зациклен)
+- [ ] Benchmark A/B (одноповоротный сценарий #20 + саммари-задача), attach-pr, go/no-go
