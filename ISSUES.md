@@ -51,7 +51,7 @@ Two gaps, both surfaced while landing PR #1/#2:
 2. **Our `mem-context` workflow only runs memory-context files** (`memory-context`, `memory-context-savings`, `tool-get-call-details`, `pii`) + core typecheck. A regression in any other core test is invisible to CI — e.g. `get_tool_call_details` added to `builtins.ts` broke `location-layer.test.ts` expectations and was only caught by a local full `bun test` (fixed in PR #2). Remaining local core failures are environmental (`cross-spawn` ×15, `Npm.add`) and would fail on upstream too — CI should run the full core suite and tolerate/allowlist only those, or run it as non-blocking.
    **Fixed in PR #4:** `mem-context.yml` gains a blocking `core full suite` job — full `bun test` in `packages/core` on `ubuntu-latest` (macOS-environmental failures don't occur on Linux; failure summary greps `(fail)` lines) plus `bun run typecheck` in `packages/opencode`.
 
-**Acceptance:** a PR on the fork shows no checks stuck in `queued`; a change to `builtins.ts` that breaks another core test fails CI. — Verify on PR #4 after checks complete, then merge and cancel any leftover queued runs.
+**Acceptance:** a PR on the fork shows no checks stuck in `queued`; a change to `builtins.ts` that breaks another core test fails CI. — **Verified 2026-10-10:** PR #4 checks completed (unit matrix now runs on github-hosted), PR merged into `memory-context-v1` (squash `d1435d2338`), branch deleted, `mem-context` runs on `memory-context-v1` green. CI-1 closed.
 
 ## NEW P0: Context Projection v1 — reduce old tool outputs in Build
 
