@@ -54,6 +54,25 @@ Two gaps, both surfaced while landing PR #1/#2:
 
 **Acceptance:** a PR on the fork shows no checks stuck in `queued`; a change to `builtins.ts` that breaks another core test fails CI. — **Verified 2026-10-10:** PR #4 checks completed (unit matrix now runs on github-hosted), PR merged into `memory-context-v1` (squash `d1435d2338`), branch deleted, `mem-context` runs on `memory-context-v1` green. CI-1 closed.
 
+## BUG-2 — memory-context не работал на прод-пути V1 (FIXED IN PR #7, branch `groom/2026-10-10-memory-context-v1-wire`)
+
+Найден e2e-тестом на бесплатных LLM (step test-free, 2026-10-10): `OPENCODE_MEMORY_CONTEXT=1` **не влиял на `opencode run`/TUI** — input-токены с флагом и без были идентичны (20256/9353/10065/206 против 20256/9355/10143/145), `OPENCODE_MEMORY_CONTEXT_DEBUG` не печатал ни строки.
+
+**Причины (три дыры в одном):**
+1. `MemoryContext.project` был захукнут только в V2-runner (`packages/core/src/session/runner/llm.ts:202`), а `SessionV2.prompt`/`resume` не имеют вызовов в проде. Реальный путь: `opencode run`/TUI → HTTP → `SessionPrompt` (`packages/opencode/src/session/prompt.ts`) → `MessageV2.toModelMessagesEffect` → `SessionProcessor` → `LLM.Service`. Хук отсутствовал.
+2. `get_tool_call_details`/`find_tool_calls` регистрировались только в V2-builtins (`packages/core/src/tool/builtins.ts`); V1-реестр (`packages/opencode/src/tool/registry.ts`) их не содержит — маркеры указывали бы на несуществующие для модели тулы.
+3. V1-тулы читали `session_message` (V2-таблица), которая для V1-сессий пуста (0 строк против 1578 `message` / 6797 `part`) — projector не пишет V2-таблицы из V1-событий.
+
+**Чеклист:**
+- [x] `MemoryContext.projectV1` для `SessionV1.WithParts[]` (те же правила защиты, маркеры с call_id/retrieve)
+- [x] Хук в `prompt.ts` перед `toModelMessagesEffect`
+- [x] V1-тулы `get_tool_call_details`/`find_tool_calls`, читающие `PartTable` (json_extract), регистрация в V1-registry
+- [x] Unit-тесты projectV1 (10) + интеграционные V1-тулы (10)
+- [x] E2E на ladder/free: флаг уменьшает cache_r (turn-4 39680→18432), retrieve-петля достаёт needle из PartTable (ALPHA-DELTA-42)
+- [ ] Замержить PR #7 после сборки чеков
+
+**Acceptance:** `opencode run` с `OPENCODE_MEMORY_CONTEXT=1` компактит старые tool-выводы (подтверждено падением cache_r и debug-логом) и модель получает рабочие retrieve-инструкции; PR #7 смержен в `memory-context-v1`.
+
 ## NEW P0: Context Projection v1 — reduce old tool outputs in Build
 
 See `CONTEXT_V1.md`. Implement a flag-gated in-memory substitution of older completed successful tool-result text at provider-turn assembly, preserving call/result envelopes, IDs, user messages, system epochs and native continuation metadata. Require retrievable originals, explicit fallback and A/B cost/quality tests. Do not replace all session history.
