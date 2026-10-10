@@ -30,6 +30,18 @@ Background embeddings for documents and historic messages, explicit semantic sea
 Separate opt-in feature flag modifies only provider message assembly, leaving System Context Epoch, baselineSeq, all session history and protocol-valid recent call/result continuation intact. Compare with original OpenCode on identical coding tasks, accounting for prompt caching. **Acceptance:** no material task success regression, net savings and latency documented, one-switch rollback. Dependencies: I0–I3; I4 optional.
 
 
+## BUG-1 — Compacted shell output markers are not retrievable (FIXED 2026-10-10, PR #1, branch `fix-shell-marker-retrieval`)
+
+GitHub issues are disabled on `gpt-mem/opencode-mem`, so filing here.
+
+`MemoryContext.project` compacts large old `shell` messages (`packages/core/src/session/memory-context.ts:130-144`), but `shellMarker` (`:100-107`) emits neither `call_id=` nor a `retrieve=get_tool_call_details(...)` line — unlike `toolMarker` (`:79`, `:87`). Shell messages do carry `callID` (`SessionMessage.Shell`) and `get_tool_call_details` already resolves them (`packages/core/src/tool/get-tool-call-details.ts:50-62`), so the original is in SQLite, but the marker's only hint is `original=session ... message <id>`, which the tool does not accept as input. Result: for bash — the largest payload class in tool-heavy sessions — the "nothing hidden" invariant is broken; the LLM has no working retrieval path.
+
+**Fix:** include `call_id=<message.callID>` and `retrieve=get_tool_call_details(call_id="<callID>")` in `shellMarker`.
+
+**Test gap:** `memory-context-savings.test.ts:148-159` ("keeps every compacted result retrievable by call_id") filters only `[mem:compacted tool result]` markers, so shell markers are never asserted. Extend it to `[mem:compacted shell output]`.
+
+**Acceptance:** shell marker contains unique `call_id` + retrieve line; `get_tool_call_details(call_id)` returns the original shell output for a compacted shell message; CI test covers both marker kinds.
+
 ## NEW P0: Context Projection v1 — reduce old tool outputs in Build
 
 See `CONTEXT_V1.md`. Implement a flag-gated in-memory substitution of older completed successful tool-result text at provider-turn assembly, preserving call/result envelopes, IDs, user messages, system epochs and native continuation metadata. Require retrievable originals, explicit fallback and A/B cost/quality tests. Do not replace all session history.
