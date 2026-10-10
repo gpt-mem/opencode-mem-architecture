@@ -1,6 +1,6 @@
 # GitHub Issue backlog — gpt-mem/opencode-mem
 
-Target branch: `dev`. Use short branches (up to 3 words, hyphens), conventional PR titles, and separate PRs. Each issue below is a standalone work item; follow `ARCHITECTURE.md` for full contracts.
+Target branch: `memory-context-v1` (base `dev`). Use short branches (up to 3 words, hyphens), conventional PR titles, and separate PRs. Each issue below is a standalone work item; follow `ARCHITECTURE.md` for full contracts. **GitHub issues на репо ВКЛЮЧЕНЫ** (с 2026-10-10) — основная очередь задач ведётся там; этот файл — локальный бэклог/история.
 
 ## I0 — Audit integration and baseline
 Audit authoritative Session Runner, tool settlement, current SQLite event schema, output truncation/managed output files, versioned migrations and FTS5. Instrument baseline per-provider-turn breakdown: system/history/tool definitions, cache read/write, number of tool invocations and success. Collect representative coding sessions. **Acceptance:** reproducible baseline; source map and no behavior change. Dependencies: none.
@@ -34,7 +34,7 @@ Separate opt-in feature flag modifies only provider message assembly, leaving Sy
 
 ## BUG-1 — Compacted shell output markers are not retrievable (FIXED 2026-10-10, PR #1, branch `fix-shell-marker-retrieval`)
 
-GitHub issues are disabled on `gpt-mem/opencode-mem`, so filing here.
+(Фиксировано локально до включения GitHub issues; сейчас issues включены — новые баги заводить там.)
 
 `MemoryContext.project` compacts large old `shell` messages (`packages/core/src/session/memory-context.ts:130-144`), but `shellMarker` (`:100-107`) emits neither `call_id=` nor a `retrieve=get_tool_call_details(...)` line — unlike `toolMarker` (`:79`, `:87`). Shell messages do carry `callID` (`SessionMessage.Shell`) and `get_tool_call_details` already resolves them (`packages/core/src/tool/get-tool-call-details.ts:50-62`), so the original is in SQLite, but the marker's only hint is `original=session ... message <id>`, which the tool does not accept as input. Result: for bash — the largest payload class in tool-heavy sessions — the "nothing hidden" invariant is broken; the LLM has no working retrieval path.
 

@@ -1,6 +1,6 @@
 # OpenCode MEM — Context Projection v1 (implementation draft)
 
-Status: proposed for first implementation; feature flag, default off until smoke tests. Target: `gpt-mem/opencode-mem` branch `dev`. Architecture: `gpt-mem/opencode-mem-architecture`.
+Status: implemented on `memory-context-v1` behind `OPENCODE_MEMORY_CONTEXT` (default off). Target: `gpt-mem/opencode-mem` branch `memory-context-v1` (base `dev`). Architecture: `gpt-mem/opencode-mem-architecture`. Реализация: V1+V2 проекция (PR #7), cache-stable граница (PR #21/#22), delivery-режим B0 (PR #27, acceptance GO).
 
 ## Goal
 
