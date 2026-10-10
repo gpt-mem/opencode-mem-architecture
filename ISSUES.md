@@ -10,7 +10,7 @@ Create memory-owned SQLite schema/migrations and source-backed event index, supp
 
 ## I1b — Small-model tool overview/search/details
 Native methods: `get_tool_call_overview`, `find_tool_calls`, `get_tool_call_details`. Summary groups by tool name and status, with counts and examples. Search by tool name, status, regex or text. Details connect each call and result and point to original full output. All responses bounded, paginated and source linked. **Acceptance:** find last failed Bash and full output without full session; tests for pending, unknown and deleted source. Dependencies: I1a.
-**Status 2026-10-10:** `find_tool_calls` and `get_tool_call_details` shipped on `memory-context-v1` (PR #6 / commit `5b14671755`); `get_tool_call_overview` not yet implemented.
+**Status 2026-10-10:** all three tools shipped on `memory-context-v1` — `find_tool_calls` (PR #6 / commit `31fb5e4bdf`), `get_tool_call_details` (commit `5b14671755`), `get_tool_call_overview` (PR #17, branch `tool-call-overview`, open — merge after checks; closes I1b).
 
 ## I2a — GitHub/URL/entity reference extraction
 Parse owner/repo PR and issue links, commit SHAs, branch names, normalized URL/endpoint and originating tool/message. Distinguish references/mentions from verified actions. Redact sensitive query parameters. Provide compact search and exact original refs. **Acceptance:** no invented merged status, duplicates deduped, regex search and tests. Dependencies: I1a.
@@ -69,7 +69,7 @@ Two gaps, both surfaced while landing PR #1/#2:
 - [x] V1-тулы `get_tool_call_details`/`find_tool_calls`, читающие `PartTable` (json_extract), регистрация в V1-registry
 - [x] Unit-тесты projectV1 (10) + интеграционные V1-тулы (10)
 - [x] E2E на ladder/free: флаг уменьшает cache_r (turn-4 39680→18432), retrieve-петля достаёт needle из PartTable (ALPHA-DELTA-42)
-- [ ] Замержить PR #7 после сборки чеков
+- [x] Замержить PR #7 после сборки чеков (merged 2026-10-10, squash `58554fc6de`)
 
 **Acceptance:** `opencode run` с `OPENCODE_MEMORY_CONTEXT=1` компактит старые tool-выводы (подтверждено падением cache_r и debug-логом) и модель получает рабочие retrieve-инструкции; PR #7 смержен в `memory-context-v1`.
 
