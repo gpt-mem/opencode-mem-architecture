@@ -77,3 +77,27 @@ Two gaps, both surfaced while landing PR #1/#2:
 ## NEW P0: Context Projection v1 — reduce old tool outputs in Build
 
 See `CONTEXT_V1.md`. Implement a flag-gated in-memory substitution of older completed successful tool-result text at provider-turn assembly, preserving call/result envelopes, IDs, user messages, system epochs and native continuation metadata. Require retrievable originals, explicit fallback and A/B cost/quality tests. Do not replace all session history.
+
+## BUG-3 — Один user-prompt ⇒ ноль компакции (FIXED 2026-10-10, PR #19, ветка `single-turn-compression`)
+
+Найдено реальным замером (issue #9): правило «не трогаем всё начиная с 3-го с конца user-turn» при **одном** user-prompt давало `protectedFrom = userIndices[0] = 0` → ранний выход, 0 маркеров, `OPENCODE_MEMORY_CONTEXT_DEBUG` молчал на 9-шаговой сессии. Затронут каждый `opencode run` и первый ход TUI.
+
+**Фикс:** второе окно защиты — последние `DEFAULT_KEEP_RECENT_ASSISTANT_TURNS=2` assistant-сообщения (рабочий набор модели), граница = более ранняя из двух окон (`protectedStartIndex`, общая для V1 и V2), новый опцион `keepRecentAssistantTurns`.
+
+- [x] Unit-тесты single-turn (V1 + V2), memory-context 29/29
+- [x] Реальная сессия: `compacted=1..5`, `protected_from=3..7`, ретрив работал, ответ верный
+- [x] PR #19 смержен (squash `2a5a00bbf2`), CI `memory-context tests` + `core full suite` зелёные
+
+**Acceptance:** сессия с одним user-prompt и ≥3 assistant-сообщениями сжимается (debug-лог непустой), рабочий набор и user-окно дословны. — Закрыт.
+
+## ISSUE-20 (GitHub #20, OPEN) — Cache-стабильная проекция: mid-turn компакция удорожает сессию
+
+Найдено тем же замером: MEM on дал −44.7% provider-visible токенов, но **+69.7% фактической стоимости** (0.011368 → 0.019295 USD): граница компакции сдвигается на одно сообщение каждый шаг → prompt-prefix-кеш инвалидируется от newly-compacted сообщения (`cache_read` залипает на ~8.8k = system+маркеры), а ещё полные хвостовые tool-выводы пересылаются некешированными (`input` +83.9%, `cache_hit_rate` 0.82 → 0.42). При скидке кеша ~10× экономия по токенам оборачивается ростом цены.
+
+**Чеклист (см. GitHub #20):**
+- [ ] Стабильная граница внутри user-turn (проекция один раз на user-turn) либо компакция только на user-turn границах
+- [ ] Пакетная/монотонная компакция — точка изменения остаётся поздней, инвалидируемый хвост мал
+- [ ] Cache-aware admission: не компактить, если инвалидируемый хвост больше экономии
+- [ ] Повторный A/B на том же харнессе: токены, cache_read, cost, cache_hit_rate, время, успех задачи; отдельно — провайдер без prompt-cache
+
+**Acceptance:** на cache-прайсинге MEM on **не дороже** MEM off при сохранении текущей экономии токенов и корректности задачи; цифры приаттачены к PR.
