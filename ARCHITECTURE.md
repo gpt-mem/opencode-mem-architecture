@@ -221,3 +221,65 @@ PII is **never hidden** — LLM can always retrieve it via `find_pii()`.
 3. Test on free LLM (Gemini Flash, etc.)
 4. Test on paid LLM (Mimo Flash 2.6)
 5. Compare with original OpenCode
+
+## 13. Unified mask: provider cache-mark ledger (2026-10-11)
+
+Полное описание: `../cache-intent-research/UNIFIED-MASK.md` (research-repo). Кратко:
+
+### Идея
+
+Вместо TTL-догадок храним по одному числу на провайдера: **сколько префикса провайдер подтвердил через `usage.cache_read` в прошлом ответе** (`mark_tokens`). Всё что выше mark при следующей отправке — сжатая проекция (маркеры + storage). Ниже mark — байт-в-байт (cache hit).
+
+```
+для провайдера P:
+  prefix[0..mark] → байт-в-байт (проверка hash-инварианта)
+  prefix[mark..]  → сжатая проекция (MemoryContext)
+после ответа:
+  mark = usage.cache_read_tokens   (подтверждение постфактум)
+```
+
+### Почему это решает всё сразу
+
+| Свойство | Следствие |
+|---|---|
+| Бесплатный провайдер: mark = 0 | сжимается всё → трек A — частный случай того же пайплайна |
+| Платный: mark растёт с ответами | свежий хвост всегда идёт сжатым → compact-at-first-delivery (B0) автоматически |
+| LRU-вытеснение провайдером | cache_read < mark → mark падает → самоисправление, TTL не нужен |
+| Смена провайдера (ladder rung) | другая строка ledger, ничего не инвалидируется |
+| Каскад «решили резать выше — режем и ниже» | автоматически: область сжатия всегда суффикс над mark |
+
+### Схема
+
+```sql
+provider_cache_mark (
+  provider_id   TEXT PRIMARY KEY,   -- из usage последнего ответа
+  mark_tokens   INTEGER NOT NULL,   -- подтверждённая граница кеша
+  prefix_hash   TEXT,               -- hash префикса на момент подтверждения
+  last_used_at  INTEGER
+)
+```
+
+### Инварианты
+
+1. **Ниже mark не мутировать.** Нарушение hash-проверки = баг проекции.
+2. **mark обновляется только по фактическому usage** провайдера-ответа. Никаких предсказаний TTL.
+3. **Ladder API не меняется** — ledger полностью на нашей стороне (SQLite opencode). Провайдер берётся из `usage.providerID` последнего ответа, не из конфига.
+4. IntentTracker решает КОГДА осознанно сбросить mark (смена интента); ledger решает ЧТО сжимать между сбросами.
+
+### Связь с компонентами
+
+- `MemoryContext.project` — становится «маской»: получает mark, сжимает только suffix (уже чистая pure-function)
+- B0 (issue #23, acceptance GO) — реализуется ledger-политикой, а не отдельным флагом
+- IntentTracker (PR #26, day 1 merged) — логирует сигналы смены интента; day 2 (рез по смене) сбрасывает mark осознанно
+- Трек A (OPENCODE_MEMORY_CONTEXT на бесплатных) — частный случай mark=0
+
+### Требуемое тестовое покрытие (обязательно до merge)
+
+- [ ] **Unit: ledger basics** — mark растёт по cache_read, падает когда cache_read < mark, новый провайдер = строка с mark=0
+- [ ] **Unit: инвариант префикса** — проекция не мутирует байты ниже mark; нарушение hash = откат к полному префиксу (fail-safe)
+- [ ] **Unit: suffix-only сжатие** — при mark=K сжимается только message[K..], первые K байт-идентичны
+- [ ] **Unit: смена провайдера** — два провайдера, разные mark, не пересекаются
+- [ ] **Integration: mark=0 = трек A** — прогон с бесплатным провайдером байт-в-байт равен поведению OPENCODE_MEMORY_CONTEXT=1
+- [ ] **Integration: B0 через ledger** — сценарий бенчмарка (needle, 9 шагов): провайдер получает сжатый suffix первого delivery, ретрив работает
+- [ ] **Property: fail-safe** — при любой ошибке ledger (нет строки, hash mismatch, usage отсутствует) → полный префикс, сжатие off. Никогда не ломаем запрос
+- [ ] **A/B acceptance** — cost/session ≤ baseline, needle-recall 100%, через agent-benchmarks (`--opencode-session`)
