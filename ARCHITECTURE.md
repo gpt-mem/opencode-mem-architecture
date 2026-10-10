@@ -121,3 +121,56 @@ Never merge an iteration on token saving alone without functional correctness te
 ## 11. First-release context projection amendment (2026-10-10)
 
 See `CONTEXT_V1.md` for eligibility rules, source-reference guarantees, fallback, metrics and A/B tests. The full-history replacement is not in MVP; initial savings come from old successful tool outputs only.
+
+## 12. Next iteration plan (15 min)
+
+**Goal:** Implement content-type-aware compression with retrieval.
+
+### Compression types by content
+
+| Content type | Compression | Storage | Retrieval |
+|--------------|-------------|---------|-----------|
+| Bash commands | Keep command + exit code + stderr preview | SQLite `mem_tool_call` | `get_tool_call_details(call_id)` |
+| URLs/endpoints | Keep URL + method + status | SQLite `mem_entity_ref` | `find_agent_artifacts(kind="url")` |
+| Markdown/JSON/XML | Keep manifest + sections | SQLite `mem_artifact` + `mem_artifact_section` | `get_agent_artifact(artifact_id, section_id)` |
+| Decisions | Keep decision + why + timestamp | SQLite `mem_record` (type=decision) | `search_operational_memory(type="decision")` |
+| PII | Redact + separate table | SQLite `mem_pii` (encrypted) | Separate API with auth |
+
+### Implementation steps
+
+1. **Add content-type detection** in `packages/core/src/session/runner/llm.ts`
+   - Detect tool result type (bash, url, file, json, etc.)
+   - Tag with content type before projection
+
+2. **Create compression strategies** in `packages/core/src/session/compression/`
+   - `bash.ts` — keep command, exit, stderr preview
+   - `url.ts` — keep URL, method, status
+   - `artifact.ts` — keep manifest + sections
+   - `decision.ts` — keep decision + why + timestamp
+
+3. **Add retrieval tools** in `packages/core/src/tool/`
+   - `get_tool_call_details(call_id)` — already planned
+   - `find_agent_artifacts(kind, query)` — already planned
+   - `search_operational_memory(query, type)` — already planned
+
+4. **Update projection logic** in `packages/core/src/session/projector.ts`
+   - Apply compression based on content type
+   - Keep source reference for retrieval
+   - Never hide from LLM — always provide retrieval path
+
+### Acceptance criteria
+
+- [ ] Bash results compressed to command + exit + stderr preview
+- [ ] URL results compressed to URL + method + status
+- [ ] Artifacts compressed to manifest + sections
+- [ ] All compressed content retrievable via tools
+- [ ] No content hidden from LLM — always provide retrieval path
+- [ ] Token reduction measurable (target: 20-40% for tool-heavy sessions)
+
+### Next steps after this iteration
+
+1. Add MCP-compatible API for external tools
+2. Add CI with token reduction tests
+3. Test on free LLM (Gemini Flash, etc.)
+4. Test on paid LLM (Mimo Flash 2.6)
+5. Compare with original OpenCode
