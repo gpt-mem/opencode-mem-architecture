@@ -1,6 +1,6 @@
 # Compact at first delivery (issue #23) — design
 
-Дата: 2026-10-10. Статус: design для согласования (gate issue #23: не имплементировать до согласования). Ветка: cache-safe, `memory-context-v1`.
+Дата: 2026-10-10. Статус: реализован (PR #24+#27) + acceptance A/B пройден, **вердикт GO** (комментарий в issue #23, 2026-10-10). Ветка: cache-safe, `memory-context-v1`.
 
 ## 1. Проблема и цель
 
@@ -80,9 +80,9 @@
 - [x] Полный ретрив: `offset`/`full`/`total_chars` в `get_tool_call_details` V1+V2 — PR #24
 - [x] Delivery-режим `project`/`projectV1` за `OPENCODE_MEMORY_FIRST_DELIVERY` (дефолт off), V1-хук prompt.ts уже на месте — PR #27 (squash `3da43da910`)
 - [x] Юнит-тесты: delivery-маркеры на свежем результате, элигабельность, порог/allowlist env, append-only префикс, flag-off = байт-в-байт — PR #27 (16 тестов)
-- [ ] Quality/loop-тест на LLM: модель получает маркер → ретривит → решает; ре-чит не зацикливается
-- [ ] Benchmark A/B (п.8), attach-pr, вердикт go/no-go
-- [ ] После go — обсуждение дефолта (включение только с явного измеренного acceptance)
+- [x] Quality/loop-тест на LLM: модель получает маркер → ретривит → решает; ре-чит не зацикливается — A/B на mimo-v2.6-flash (2026-10-10): FD-рука закрыла needle через 2 get_tool_call_details с offset-пейджингом (offset=36000, max_chars=6000 — точечный доступ к региону иглы), ответ верный, retrieve-вызовов ограничено (2), лупов нет
+- [x] Benchmark A/B (п.8), attach-pr, вердикт go/no-go — **GO** (2026-10-10): одноповоротный #20-сценарий cost $0.012283→$0.006321 (**−48.5%**), uncached 79974→38504 (−51.9%), provider-visible −42.7%, cache_hit 0.81→0.84, needle 100%; саммари-задача cost −92.3%, uncached −96.1%, качество саммари равное; 0 инвалидаций кеша (append-only подтверждён дебагом). 4 сессии приаттачены к PR #27; комментарий в issue #23
+- [ ] После go — обсуждение дефолта (включение только с явного измеренного acceptance; acceptance есть — см. комментарий в issue #23)
 
 ## 10. Открытые вопросы
 

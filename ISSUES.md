@@ -109,7 +109,8 @@ See `CONTEXT_V1.md`. Implement a flag-gated in-memory substitution of older comp
 **Чеклист:**
 - [x] Design-док `FIRST-DELIVERY.md` + комментарий в issue #23
 - [x] Полный ретрив: `get_tool_call_details` V1+V2 `offset`/`full`/`total_chars` — PR #24, squash `4f0f3223c7` (закрыл и дыру #11: originals >8k раньше обрывались на 8k без пути к остатку)
-- [ ] Delivery-режим `project`/`projectV1` за `OPENCODE_MEMORY_FIRST_DELIVERY` (дефолт off)
-- [ ] Юнит-тесты delivery-маркеров + append-only префикс + flag-off байт-в-байт
-- [ ] Quality/loop-тест на LLM (маркер → ретрив → задача решается, ре-чит не зациклен)
-- [ ] Benchmark A/B (одноповоротный сценарий #20 + саммари-задача), attach-pr, go/no-go
+- [x] Delivery-режим `project`/`projectV1` за `OPENCODE_MEMORY_FIRST_DELIVERY` (дефолт off) — PR #27, squash `3da43da910`
+- [x] Юнит-тесты delivery-маркеров + append-only префикс + flag-off байт-в-байт — PR #27 (16 тестов)
+- [x] Quality/loop-тест на LLM (маркер → ретрив → задача решается, ре-чит не зациклен) — A/B 2026-10-10: needle 100%, 2 retrieve с offset-пейджингом, лупов нет
+- [x] Benchmark A/B (одноповоротный сценарий #20 + саммари-задача), attach-pr, go/no-go — **GO**: single-turn cost −48.5% (uncached −51.9%), summary cost −92.3% (uncached −96.1%), 0 инвалидаций кеша; 4 сессии на PR #27; вердикт-комментарий в issue #23
+- [ ] Обсуждение дефолта: включать ли FIRST_DELIVERY по умолчанию (acceptance есть; отдельное решение/PR)
