@@ -78,8 +78,8 @@
 
 - [x] Design-док (этот файл), согласование в issue #23
 - [x] Полный ретрив: `offset`/`full`/`total_chars` в `get_tool_call_details` V1+V2 — PR #24
-- [ ] Delivery-режим `project`/`projectV1` за `OPENCODE_MEMORY_FIRST_DELIVERY` (дефолт off), V1-хук prompt.ts уже на месте
-- [ ] Юнит-тесты: delivery-маркеры на свежем результате, элигабельность, порог/allowlist env, append-only префикс, flag-off = байт-в-байт
+- [x] Delivery-режим `project`/`projectV1` за `OPENCODE_MEMORY_FIRST_DELIVERY` (дефолт off), V1-хук prompt.ts уже на месте — PR #27 (squash `3da43da910`)
+- [x] Юнит-тесты: delivery-маркеры на свежем результате, элигабельность, порог/allowlist env, append-only префикс, flag-off = байт-в-байт — PR #27 (16 тестов)
 - [ ] Quality/loop-тест на LLM: модель получает маркер → ретривит → решает; ре-чит не зацикливается
 - [ ] Benchmark A/B (п.8), attach-pr, вердикт go/no-go
 - [ ] После go — обсуждение дефолта (включение только с явного измеренного acceptance)
