@@ -42,14 +42,16 @@ GitHub issues are disabled on `gpt-mem/opencode-mem`, so filing here.
 
 **Acceptance:** shell marker contains unique `call_id` + retrieve line; `get_tool_call_details(call_id)` returns the original shell output for a compacted shell message; CI test covers both marker kinds.
 
-## CI-1 — Fork CI: upstream workflows queue forever, and our workflow misses core regressions (OPEN, found 2026-10-10)
+## CI-1 — Fork CI: upstream workflows queue forever, and our workflow misses core regressions (FIXED 2026-10-10, PR #4, branch `ci-fork-runners`)
 
 Two gaps, both surfaced while landing PR #1/#2:
 
 1. **Blacksmith runners don't exist on the fork.** `.github/workflows/test.yml` (unit/e2e linux+windows) and `.github/workflows/pr-management.yml` (`check-duplicates`) use `runs-on: blacksmith-4vcpu-ubuntu-2404` / `blacksmith-4vcpu-windows-2025`. Without the Blacksmith app on `gpt-mem/opencode-mem` those jobs sit in `queued` forever (57+ min observed) and every PR shows permanently pending checks. No branch protection, so PRs are still mergeable — but the signal is noise. **Fix options:** guard with `if: github.repository == 'anomalyco/opencode'`, or map to `ubuntu-latest`/`windows-latest` on the fork; also cancel stale queued runs after merge.
+   **Fixed in PR #4:** `test.yml` unit matrix maps runners per-repo (`github.repository == 'anomalyco/opencode' && blacksmith-* || ubuntu-latest/windows-latest`), e2e job and `pr-management/check-duplicates` skipped on the fork (`if: github.repository == 'anomalyco/opencode'` — e2e is slow Playwright noise, duplicate-check needs the upstream-only `OPENCODE_API_KEY`).
 2. **Our `mem-context` workflow only runs memory-context files** (`memory-context`, `memory-context-savings`, `tool-get-call-details`, `pii`) + core typecheck. A regression in any other core test is invisible to CI — e.g. `get_tool_call_details` added to `builtins.ts` broke `location-layer.test.ts` expectations and was only caught by a local full `bun test` (fixed in PR #2). Remaining local core failures are environmental (`cross-spawn` ×15, `Npm.add`) and would fail on upstream too — CI should run the full core suite and tolerate/allowlist only those, or run it as non-blocking.
+   **Fixed in PR #4:** `mem-context.yml` gains a blocking `core full suite` job — full `bun test` in `packages/core` on `ubuntu-latest` (macOS-environmental failures don't occur on Linux; failure summary greps `(fail)` lines) plus `bun run typecheck` in `packages/opencode`.
 
-**Acceptance:** a PR on the fork shows no checks stuck in `queued`; a change to `builtins.ts` that breaks another core test fails CI.
+**Acceptance:** a PR on the fork shows no checks stuck in `queued`; a change to `builtins.ts` that breaks another core test fails CI. — Verify on PR #4 after checks complete, then merge and cancel any leftover queued runs.
 
 ## NEW P0: Context Projection v1 — reduce old tool outputs in Build
 
