@@ -26,7 +26,7 @@ Issue ordering: audit -> core ingestion -> tool API -> artifacts -> memory write
 - **↓ context projection standalone** (STUDY #7 понижен до doubtful) — dollar-экономия plain projection на cache-прайсинге отрицательна; прод-ценность даёт FD+ledger (`CONTEXT=1 CACHE_MARK=1`, proven #1). CONTEXT остаётся каркасом остальных режимов, новые фичи по нему — не приоритет цикла.
 - **~ discover-слой #10** (STUDY #6/#9 doubtful) — за 24ч `find_tool_calls`=0 и `get_tool_call_overview`=0 вне selftest; приоритет не поднимать до #13: без индексации решений find бесполезен.
 - **~ intent defaults (INTENT_ACT/INTENT_CUT)** (STUDY #8 doubtful) — NO-GO по умолчанию остаётся, ждём stage-5 #43.
-- Без изменений: P0 #39 (resilience, 5/7 — UI-причины → #38, selftest kill-сценарий), #9 (benchmark), P1 #12/#14/#38, P2 #35/#42. #11 закрыт полностью (2026-10-12, 5/5).
+- Без изменений: P0 #9 (benchmark, 2/5), P1 #12/#14/#38, P2 #35/#42. #11 закрыт полностью (2026-10-12, 5/5). **Сессия 40 (2026-10-12):** PR #56 merged (`a3a1127180`) — kill-scenario тест (mid-stream socket destroy → SessionRetry in-place recovery, warm ledger intact) — **#39 → 6/7**, хвост = только UI-причины → #38.
 
 ## Updated first-release priority (2026-10-10)
 
