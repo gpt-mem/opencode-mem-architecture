@@ -107,4 +107,48 @@ log "DOCS PUSH (safety net)"
     log "docs clean — nothing to push"
   fi ) || true
 
+# ── 7. Тяжёлые артефакты → Google Drive ─────────────────────────────────
+# SA = vovako-21js@trained-assist-gdrive-sa.iam.gserviceaccount.com
+# Шареная папка: OpenCode MEM Artifacts (ID: 1yA2KUcjVV9V3mwk1u5rTFI1p5DAsNb9B)
+# Требуется: Shared Drive, созданная владельцем (kobzevvv@gmail.com), SA = writer.
+#            Ключ: $HOME/.config/gcloud/application_default_credentials.json
+#            или $GOOGLE_APPLICATION_CREDENTIALS.
+#
+# Формат: selftest-<STAMP>.log (до 10MB), chain-state.jsonl (последние 50 строк).
+# Не заливаем: chain-last.md, STUDY.md, BUGS-REPORT.md — они в GitHub docs-репо.
+
+GDRIVE_SA_EMAIL="vovako-21js@trained-assist-gdrive-sa.iam.gserviceaccount.com"
+GDRIVE_FOLDER_ID="1yA2KUcjVV9V3mwk1u5rTFI1p5DAsNb9B"
+
+upload_to_drive() {
+  local file="$1" mime="${2:-text/plain}"
+  if [ ! -f "$file" ]; then
+    log "Drive upload SKIP: $file not found"
+    return 0
+  fi
+  local size=$(stat -f%z "$file" 2>/dev/null || echo 0)
+  if [ "$size" -gt 10485760 ]; then  # >10MB
+    log "Drive upload SKIP: $file >10MB ($size bytes) — слишком большой"
+    return 0
+  fi
+  # gcloud storage cp — надёжнее, чем googleapis
+  if command -v gcloud >/dev/null 2>&1; then
+    gcloud storage cp "$file" "gs://opencode-mem-artifacts/chain/$STAMP/$(basename "$file")" --project aiqarus-web 2>> "$LOG" \
+      && log "Drive OK: $file → gs://..." || log "Drive FAIL: $file"
+  else
+    log "Drive SKIP: gcloud not found"
+  fi
+}
+
+# Selftest-лог этого цикла
+SELFTEST_LOG="$HOME/.opencode/scripts/selftest-logs/selftest-$(ls -t "$HOME/.opencode/scripts/selftest-logs/" 2>/dev/null | head -1)"
+[ -f "$SELFTEST_LOG" ] && upload_to_drive "$SELFTEST_LOG" "text/plain"
+
+# Chain state (последние 50 строк)
+if [ -f "$STATE" ]; then
+  tail -50 "$STATE" > "/tmp/chain-state-last50.jsonl"
+  upload_to_drive "/tmp/chain-state-last50.jsonl" "application/json"
+  rm -f "/tmp/chain-state-last50.jsonl"
+fi
+
 log "MEM-CHAIN $STAMP DONE"
