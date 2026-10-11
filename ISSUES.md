@@ -102,7 +102,7 @@ See `CONTEXT_V1.md`. Implement a flag-gated in-memory substitution of older comp
 
 **Acceptance (2026-10-10):** «не дороже» — ✅ выполнено (cost parity одноповоротный, −1.2% трёхповоротный, задачи верны во всех руках); «текущая экономия токенов» — ✅ в мультиповоротной форме (−19.1% суммарно), ❌ в одноповоротной (−0.1% — осознанно: старая −44.7% и была причиной +70% стоимости; доступна opt-in `OPENCODE_MEMORY_MIDTURN=1`). Единственный путь к безусловной долларовой экономии на cache-прайсинге — компакция при первой доставке (маркер вместо полного результата сразу; оригинал уже в SQLite) — заведено отдельно: **GitHub #23**.
 
-## ISSUE-23 (GitHub #23, OPEN) — Compact at first delivery (B0, дизайн + prerequisite)
+## ISSUE-23 (GitHub #23, CLOSED 2026-10-11 — PR #27 delivery-режим + PR #36 ledger-политика; A/B GO, −48.5%/−92.3% cost, needle-recall 100%) — Compact at first delivery (B0, дизайн + prerequisite)
 
 Единственный путь к долларовой экономии на cache-прайсинге: не отправлять bulk больших tool-выводов в принципе — delivery-маркер при первой доставке, оригинал в SQLite. Дизайн: **`FIRST-DELIVERY.md`** (та же маркерная семантика; элигабельность bash/webfetch/websearch/read ≥2000 chars, env `OPENCODE_MEMORY_FIRST_DELIVERY` default off + `_MIN_CHARS`/`_TOOLS`; cache-safe append-only без инвалидаций; loop-breakers: превью в маркере, ретрив всегда оригинал, `full`/`offset` постраничность; acceptance ≥ −30% реальной стоимости, needle 100%). Дизайн вынесен на согласование — комментарий в GitHub #23; gate: не имплементировать delivery-режим до согласования.
 
@@ -113,4 +113,4 @@ See `CONTEXT_V1.md`. Implement a flag-gated in-memory substitution of older comp
 - [x] Юнит-тесты delivery-маркеров + append-only префикс + flag-off байт-в-байт — PR #27 (16 тестов)
 - [x] Quality/loop-тест на LLM (маркер → ретрив → задача решается, ре-чит не зациклен) — A/B 2026-10-10: needle 100%, 2 retrieve с offset-пейджингом, лупов нет
 - [x] Benchmark A/B (одноповоротный сценарий #20 + саммари-задача), attach-pr, go/no-go — **GO**: single-turn cost −48.5% (uncached −51.9%), summary cost −92.3% (uncached −96.1%), 0 инвалидаций кеша; 4 сессии на PR #27; вердикт-комментарий в issue #23
-- [ ] Обсуждение дефолта: включать ли FIRST_DELIVERY по умолчанию (acceptance есть; отдельное решение/PR)
+- [x] Обсуждение дефолта: решено в PR #36 — `firstDeliveryPolicy` включает first-delivery при `OPENCODE_MEMORY_CACHE_MARK=1` (продакшен-конфиг = `CONTEXT=1 CACHE_MARK=1`); одиночный `FIRST_DELIVERY` остаётся для ledger-less сетапов
