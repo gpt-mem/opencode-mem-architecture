@@ -93,4 +93,18 @@ step_session researcher "$SCRIPTS/prompt-researcher.txt"
 # 5. АРХИТЕКТОР — консервативно правит приоритеты + prompt builder'а
 step_session architect "$SCRIPTS/prompt-architect.txt"
 
+# ── 6. Страховочный push docs-репо ──────────────────────────────────────
+# Сессии сами пушат свои артефакты; здесь добиваем всё, что осталось локально,
+# чтобы ценные находки не остались только на диске.
+log "DOCS PUSH (safety net)"
+( cd "$DOCS" && \
+  if [ -n "$(git status --porcelain)" ]; then
+    git add -A && \
+    git commit -m "chain: auto-push $STAMP" && \
+    git push origin main >> "$LOG" 2>&1 \
+      && log "docs pushed" || log "docs push FAILED (занято/конфликт — подхватится позже)"
+  else
+    log "docs clean — nothing to push"
+  fi ) || true
+
 log "MEM-CHAIN $STAMP DONE"
