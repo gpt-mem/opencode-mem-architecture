@@ -17,6 +17,17 @@ Recommended first user journey: install fork, run `npm test` and a GitHub CLI ca
 
 Issue ordering: audit -> core ingestion -> tool API -> artifacts -> memory write -> embedding experiment -> context experiment. Issues may overlap only when contracts have been fixed and merge conflicts are minimized.
 
+## Priorities (arch, chain 20261012-0007, 2026-10-12)
+
+Основание: STUDY cycle 2 (`research-20261012-0021`) + BUG-REPORT `20261012-000748`. Метки ↑/↓/~ — сдвиг этого цикла; пункты без метки не тронуты. Консервативно: ничего не вычеркивается.
+
+- **↑ #13 DecisionWrite / индексация реплик ассистента и вложенных tool-results** (STUDY #4, high, needs_proof) — ретрив решений = 0 четыре прогона подряд, `put_in_operational_memory` недоступен 8 раз; без этого «nothing hidden» не покрывает слой решений. Приёмка — живой сценарий «вспомни решение в новой сессии», не только тесты.
+- **↑ #11 (п.4) PII в индексе + read-only `find_pii` / журнал очистки** (STUDY #5, high, needs_proof; BUG-REPORT high) — «0 markers with pii=» ≠ индекс чист: 3 утёкших носителя живут в индексе; redaction модельного превью (proven) не останавливает размножение PII в индексе.
+- **↓ context projection standalone** (STUDY #7 понижен до doubtful) — dollar-экономия plain projection на cache-прайсинге отрицательна; прод-ценность даёт FD+ledger (`CONTEXT=1 CACHE_MARK=1`, proven #1). CONTEXT остаётся каркасом остальных режимов, новые фичи по нему — не приоритет цикла.
+- **~ discover-слой #10** (STUDY #6/#9 doubtful) — за 24ч `find_tool_calls`=0 и `get_tool_call_overview`=0 вне selftest; приоритет не поднимать до #13: без индексации решений find бесполезен.
+- **~ intent defaults (INTENT_ACT/INTENT_CUT)** (STUDY #8 doubtful) — NO-GO по умолчанию остаётся, ждём stage-5 #43.
+- Без изменений: P0 #39 (resilience, 4/7), #9 (benchmark), P1 #12/#14/#38, P2 #35/#42.
+
 ## Updated first-release priority (2026-10-10)
 
 Ship the tool-call index/overview and an opt-in `MemoryContext.project` together. Projection only substitutes old, successful, settled tool-result payload text with a retrievable source marker; never changes original SQLite history or System Context Epoch. Measure actual billed/cache tokens and keep default off until tests. See `CONTEXT_V1.md`. Full memory-first context replacement remains a separate future experiment.

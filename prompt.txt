@@ -1,0 +1,85 @@
+# OpenCode MEM — автономная итерация
+
+## Миссия
+Форк OpenCode, который сокращает реальную стоимость и размер LLM-контекста, сохраняя полный ретрив исходных данных. Главный критерий успеха — улучшение работающего coding-агента на реальных сессиях. Не трать шаги на второстепенное (документация, перестановка файлов, бесконечные ревью, тесты, не блокирующие основной сценарий).
+
+Репозитории:
+— архитектура: gpt-mem/opencode-mem-architecture (локально /Users/vova/opencode-mem-architecture, git remote origin, ветка main)
+— код: gpt-mem/opencode-mem, клон /tmp/opencode-mem, целевая ветка memory-context-v1
+— gh identity: kobzevvv. Не трогать dev/upstream/production без явного разрешения.
+Проверяй актуальное состояние, а не предполагай, что ранее описанное ещё верно.
+
+Типы сжатия (по типу контента): урлы/bash-вывод/артефакты — в SQLite с ретривом по call_id; принятые решения (решение, why, дейтайм); артефакты md/json — доступ напрямую; саммари тулов; эмбеддинги; PII — отдельно. Философия: сжимаем, но ничего не прячем — LLM может всё достать.
+
+## Инварианты (нарушать нельзя)
+— OpenCode хранит полную историю в SQLite. MEM сжимает ТОЛЬКО модельное представление истории. Оригиналы не удалять и не повреждать ради экономии.
+— В каждом компакт-маркер — рабочий путь восстановления (call_id → get_tool_call_details). Если путь недоступен — не утверждать, что данные восстановимы.
+— System Context Epoch, permissions, инструкции пользователя, протокольное состояние — не изменять.
+— PII/credentials: секреты не попадают в previews, markers, embeddings, логи и диагностику. Для credentials — только metadata и безопасные ссылки; originals — через авторизованные механизмы OpenCode.
+
+## На старте
+0. Dogfooding selftest: логи ~/.opencode/scripts/selftest-logs/ (запускается каждые 3ч). Если есть свежий лог — проверь его: memory-тулы вызывались? PII найден? ретрив работал? usage cache_read > 0? Косяки → заведи issue и почини. Это лучший дебагер нашей архитектуры (SELFTEST.md в док-репо).
+1. cd /tmp/opencode-mem: git status, ветка, unpushed коммиты, stash, remote.
+2. Прочитать /Users/vova/opencode-mem-architecture/ITERATIONS.md; при необходимости ARCHITECTURE.md и ISSUES.md.
+3. PR и issues — основная очередь (issues на репо ВКЛЮЧЕНЫ):
+   gh pr list --repo gpt-mem/opencode-mem --state open
+   gh issue list --repo gpt-mem/opencode-mem --state open --limit 30
+   — ТРИАЖ при >5 открытых issues: прежде чем брать задачу, пробегись по всем открытым — закрой те, где работа уже сделана (чеклист весь [x] / PR смержен / коммит есть), обнови устаревшие чеклисты галочками, оставь комментарий со статусом незакрытым. Долгий список открытых issue без триажа = слепая работа. Закрытие done-issue — тоже полезный шаг итерации (тип: triage)
+   — начинать с #15 (START HERE), потом P0, потом P1
+   — работа над пунктом issue → комментарий (gh issue comment) + галочка в чеклисте; найдена новая задача/проблема → сразу gh issue create
+   — ТРЕБОВАНИЕ: каждый код-PR обязан быть привязан к issue. В теле PR — строка `Refs #N` или `Closes #N`. После merge/закрытия PR — gh issue comment с результатом (что сделано, commit/PR, измеренный эффект). Issue без комментариев = недоделанный трекинг, следующая сессия не поймёт статус
+   — если работа шла вне issue (например починка CI) — заведи issue задним числом с описанием и закрой ссылкой на PR, чтобы история была полной
+   — незавершённый PR/WIP, блокирующий основной сценарий — доделать прежде нового
+4. Проверить незавершённые опубликованные ветки (groom/*, fix/*): diff перед закрытием/удалением; старая ветка ≠ мёртвая. По последнему журналу WIP-ветка SessionPrompt-интеграции (...-wire) ждала починки typecheck/тестов — перепроверь статус.
+
+## Приоритеты
+(Статус arch 2026-10-12: **issue #29 закрыт полностью** — PR #32/#33/#36, прод-конфиг `CONTEXT=1 CACHE_MARK=1`; блок ниже «главный провал #29 / IntentTracker day 2» устарел — стартуй с открытой P0-очереди: #39 resilience (4/7), #11 retrieval/PII (3/5), #9 benchmark.) <!-- arch: #29 closed (ROADMAP/STUDY cycle 2 #1 proven) — prompt-приоритеты устарели -->
+Главный текущий провал — **issue #29 (Unified mask: provider cache-mark ledger)**. Описание: ARCHITECTURE.md §13 + research-repo gpt-mem/cache-intent-research (UNIFIED-MASK.md). Это единая механика для обоих треков (бесплатный = mark 0, платный = B0 автоматически). Выбери ОДНО действие и доведи до проверяемого результата:
+
+— P0 (#29) — ledger: таблица provider_cache_mark, MemoryContext.project(mark) сжимает только suffix, обновление mark из usage.cache_read, fail-safe (любая ошибка ledger → полный префикс). Чеклист тестов в ARCHITECTURE §13 «Требуемое тестовое покрытие» — закрывай пункты по одному, комментируй в issue
+— P0-продолжение — IntentTracker day 2 (issue задача из PLAN.md research-repo): рез по hysteresis + прогоны S1-S4 → go/no-go. Только после или параллельно с #29
+— P1 — после #29 сольётся: B0 через ledger (убрать одиночный флаг), интеграция mark=0 == трек A байт-в-байт
+— P1 — функциональность памяти: get_tool_call_overview/find/details, индексация GitHub/URL/Bash/MCP, Artifact Manifest, DecisionWrite
+— Напоминание по приёмке задач памяти: в живом потоке работает только `get_tool_call_details` (130 вызовов/24ч), `find_tool_calls`=0 и `get_tool_call_overview`=0 вне selftest, решения в индекс не попадают (ретрив решений = 0, 4 прогона подряд). Эффект задачи по индексации/поиску проверяй сценарием «вспомни решение/факт в новой сессии», а не только юнит-тестами. <!-- arch: STUDY cycle 2 — memory tools underused; BUGS-REPORT 20261012-000748 -->
+— P2 — тесты на бесплатных LLM, baseline vs сток, CI, архитектурное ревью #29
+Правило «не два шага одного типа подряд» — вторично: только при равной пользе.
+
+Ветки: cache-safe (не мутирует префикс ниже mark) → memory-context-v1; cache-breaking (mid-turn, sliding window) → cache-breaking-experiments, только выключенными флагами. Ledger-работа — cache-safe, в основную линию.
+
+## Код
+— ветка от memory-context-v1 (или продолжение уже опубликованной WIP). Каждая содержательная итерация: commit → push → PR (gh pr create --repo gpt-mem/opencode-mem --base memory-context-v1). Локально ничего не копить. Не создавай дубль-PR с теми же изменениями. Следуй AGENTS.md форка.
+— перед PR: cd /tmp/opencode-mem && export PATH="$HOME/.bun/bin:$PATH"
+  (cd packages/core && bun test --only-failures && bun run typecheck)
+  (cd packages/opencode && bun test --only-failures && bun run typecheck)
+  Нестабильные upstream-тесты — зафиксируй воспроизводимые факты и отдели от регрессии своих изменений. Не обходи проверки молча.
+— после создания PR НЕ ждать долгие GitHub Actions. Но перед merge обязательные чеки должны быть оценены (можно следующей итерацией).
+
+## Merge
+— готов = актуальный head SHA, нет конфликтов, обязательные чеки зелёные, изменения качественные → gh pr merge --squash, удалить ветку
+— чеки pending → оставить открытым
+— чеки упали → выяснить причину; «локально проходит» ≠ готов
+— работа устарела → сравнить с целевой веткой, закрыть PR с объяснением; уникальные изменения не удалять без сохранённой копии
+
+## Проверка экономии (обязательно при изменениях контекста)
+Бенчмарк-CLI: export PATH="$HOME/.local/bin:$PATH" (репо gpt-mem/agent-benchmarks, БД ~/.opencode/benchmarks.db)
+— benchmark run <компонент>-<slug> --model "opencode-go/mimo-v2.6-flash" --prompt "<самодостаточный промпт>" --tag baseline|variant
+  benchmark show <session-id>   # token_count, compression_ratio, latency_ms
+  benchmark attach-pr <session-id> <pr-number> --repo gpt-mem/opencode-mem
+— сравнивать MEM on/off на ИДЕНТИЧНОМ сценарии, модели и конфигурации: входные токены, cached read/write, выходные, фактическая стоимость, размер provider-visible prompt, число LLM-вызовов, успешность задачи, ретрив сжатого
+— байтовое сокращение synthetic fixture — полезный unit test, но НЕ доказательство реальной экономии. Не оптимизируй одну метрику ценой корректности выполнения задачи
+— новые метрики/типы бенчмарков — PR в gpt-mem/agent-benchmarks от main; имена <компонент>-<операция>
+— GCS не настроен — upload пропускай, работай локально с БД
+— классический opencode для сравнения: /Users/vova/.opencode/bin/opencode; форк с флагом: cd /tmp/opencode-mem && OPENCODE_MEMORY_CONTEXT=1 bun run dev
+
+## Завершение
+1. Коммит в опубликованную ветку; PR если менялся код (с `Refs #N` в теле).
+2. ТРЕБОВАНИЕ: комментарий в связанном issue (gh issue comment <N> --body "что сделано, PR, эффект"); если пункт чеклиста закрыт — обнови галочку. Это не опционально — без этого следующая сессия не увидит прогресс.
+3. Запись в /Users/vova/opencode-mem-architecture/ITERATIONS.md: дата | тип | что сделано | PR | измеренный эффект.
+4. ARCHITECTURE.md менять только если реально изменились контракты, инварианты или решения.
+5. Короткий отчёт: что сделано, что проверено, commit/PR, измеренный эффект, что осталось. Не объявляй успех до фактического результата.
+6. Большая задача → issue с чеклистом (gh issue create), выполни один проверяемый этап — следующие итерации продолжат.
+Перезапускать себя не нужно — следующую итерацию запущу я сам.
+
+## Ограничения
+— доки (ITERATIONS/ARCHITECTURE/ISSUES/ROADMAP) — ТОЛЬКО в /Users/vova/opencode-mem-architecture; код форка — в /tmp/opencode-mem
+— марафонские задачи МОЖНО брать: issue с чеклистом + первый пункт
