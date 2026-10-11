@@ -2,7 +2,7 @@
 
 Canonical architecture: `ARCHITECTURE.md`. Target implementation: `gpt-mem/opencode-mem` branch `memory-context-v1` (base `dev`).
 
-**Статус 2026-10-11:** I1 выполнен (тулы overview/find/details влиты). Проекция контекста `MemoryContext` включается флагом `OPENCODE_MEMORY_CONTEXT`, delivery-режим B0 — `OPENCODE_MEMORY_FIRST_DELIVERY` (acceptance GO, −48.5%/−92.3% cost). Cache-stable граница (PR #21/#22), IntentTracker (PR #26/#28), UNIFIED-MASK ledger — issue #29 (см. ARCHITECTURE §13). CI: `mem-context.yml` зелёный.
+**Статус 2026-10-11:** I1 выполнен (тулы overview/find/details влиты). Проекция контекста `MemoryContext` включается флагом `OPENCODE_MEMORY_CONTEXT`, delivery-режим B0 — `OPENCODE_MEMORY_FIRST_DELIVERY` (acceptance GO, −48.5%/−92.3% cost). Cache-stable граница (PR #21/#22), IntentTracker (PR #26/#28), UNIFIED-MASK ledger — issue #29, первая стадия смержена (PR #32, флаг `OPENCODE_MEMORY_CACHE_MARK` off by default; см. ARCHITECTURE §13). CI: `mem-context.yml` зелёный.
 
 | Iteration | Deliverable | Must not change | Acceptance | Статус |
 |---|---|---|---|---|
