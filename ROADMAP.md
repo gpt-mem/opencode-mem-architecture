@@ -17,14 +17,16 @@ Recommended first user journey: install fork, run `npm test` and a GitHub CLI ca
 
 Issue ordering: audit -> core ingestion -> tool API -> artifacts -> memory write -> embedding experiment -> context experiment. Issues may overlap only when contracts have been fixed and merge conflicts are minimized.
 
-## Priorities (arch, chain 20261012-0007, 2026-10-12)
+## Priorities (arch, chain 20261012-0007 → 20261012-0235, 2026-10-12)
 
 Основание: STUDY cycle 2 (`research-20261012-0021`) + BUG-REPORT `20261012-000748`. Метки ↑/↓/~ — сдвиг этого цикла; пункты без метки не тронуты. Консервативно: ничего не вычеркивается.
+Cycle 3 (chain 20261012-0235): STUDY cycle 3 (`research-20261012-0243`) + BUG-REPORT `20261012-023539` — метки уточнены, порядок и формулировки не переписаны; лишних сдвигов нет (регрессий по коду не найдено).
 
-- **↑ #13 DecisionWrite / индексация реплик ассистента и вложенных tool-results** (STUDY #4, high, needs_proof) — ретрив решений = 0 четыре прогона подряд, `put_in_operational_memory` недоступен 8 раз; без этого «nothing hidden» не покрывает слой решений. Приёмка — живой сценарий «вспомни решение в новой сессии», не только тесты.
-- **↑ #11 (п.4) PII в индексе + read-only `find_pii` / журнал очистки** (STUDY #5, high, needs_proof; BUG-REPORT high) — «0 markers with pii=» ≠ индекс чист: 3 утёкших носителя живут в индексе; redaction модельного превью (proven) не останавливает размножение PII в индексе.
+- **↑ #13 DecisionWrite / индексация реплик ассистента и вложенных tool-results** (STUDY #4, high, needs_proof) — ретрив решений = 0 пять прогонов подряд, `put_in_operational_memory` недоступен 9 раз; без этого «nothing hidden» не покрывает слой решений. Приёмка — живой сценарий «вспомни решение в новой сессии», не только тесты.
+- **↑ #11 (п.4) PII в индексе + read-only `find_pii` / журнал очистки** (STUDY #5, high, needs_proof; BUG-REPORT high) — «0 markers with pii=» ≠ индекс чист: 3 утёкших носителя живут в индексе; redaction модельного превью (proven) не останавливает размножение PII в индексе. Cycle 3: `find_pii` объявлен в release notes (PR #53), но **недоступен в сессии 2 лога подряд**, 0 вызовов в метриках — приёмка не пройдена.
+- **↑ приёмка «слито ≠ доступно модели»** (STUDY #14, medium, needs_proof — новый пункт) — релиз-ноты объявляют #53/#54/#55, активный бинарь их не отдаёт; правило: proven требует «есть в активном `~/.opencode/bin/opencode`», не «есть в release notes»; нужен чек расхождения версии/состава в selftest-trailer.
 - **↓ context projection standalone** (STUDY #7 понижен до doubtful) — dollar-экономия plain projection на cache-прайсинге отрицательна; прод-ценность даёт FD+ledger (`CONTEXT=1 CACHE_MARK=1`, proven #1). CONTEXT остаётся каркасом остальных режимов, новые фичи по нему — не приоритет цикла.
-- **~ discover-слой #10** (STUDY #6/#9 doubtful) — за 24ч `find_tool_calls`=0 и `get_tool_call_overview`=0 вне selftest; приоритет не поднимать до #13: без индексации решений find бесполезен.
+- **~ discover-слой #10** (STUDY #6/#9 doubtful) — за 24ч `find_tool_calls`=0 и `get_tool_call_overview`=0 вне selftest; приоритет не поднимать до #13: без индексации решений find бесполезен. Cycle 3 усиливает ~: ретрив решений = 0 пятый прогон подряд, `groups_total` не сходится второй лог (overview для аудита «ничего не спрятано» не годится) — ждём #13/#14, не новые find-фичи.
 - **~ intent defaults (INTENT_ACT/INTENT_CUT)** (STUDY #8 doubtful) — NO-GO по умолчанию остаётся, ждём stage-5 #43.
 - Без изменений: P0 #9 (benchmark, 2/5), P1 #12/#14/#38, P2 #35/#42. #11 закрыт полностью (2026-10-12, 5/5). **Сессия 40 (2026-10-12):** PR #56 merged (`a3a1127180`) — kill-scenario тест (mid-stream socket destroy → SessionRetry in-place recovery, warm ledger intact) — **#39 → 6/7**, хвост = только UI-причины → #38.
 
