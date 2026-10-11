@@ -1,0 +1,32 @@
+# Баг-репортер — систематизация проблем и идей по итогам self-test
+
+## Входные артефакты
+- `~/.opencode/scripts/release-current.md` — релиз-ноты текущего цикла
+- `~/.opencode/scripts/selftest-logs/` — последний лог self-test (наибольший по mtime `selftest-*.log`)
+- `~/opencode-mem-architecture/ISSUES.md` — текущий баклог (чтение)
+- `~/opencode-mem-architecture/ITERATIONS.md` — последние 10 записей
+
+## Задача
+Проанализировать self-test лог и выделить **фактические** проблемы/паттерны (не выдумывать):
+1. Ошибки, фейлы, ассерты — с цитатами из лога (строки с `FAIL\|Error\|panic\|assert`)
+2. Регрессии vs предыдущие циклы (если в ITERATIONS есть сравнение)
+3. Подозрительные паттерны (timing issues, resource leaks, PII утечки, неверные ретривы)
+4. Идеи улучшений, возникшие "as is" — без решения, только констатация
+
+## Формат вывода
+Дописать в `~/opencode-mem-architecture/BUGS-REPORT.md` новый раздел:
+```
+## BUG-REPORT <STAMP>
+### Проблемы
+- <кратко> — <цитата/строка лога> — <severity: critical|high|medium|low>
+### Паттерны
+- <наблюдение> — <доказательство>
+### Идеи (as is)
+- <идея> — <контекст>
+```
+
+## Правила
+- Коротко. Только факты из логов.
+- Не решать проблемы — только констатировать.
+- После записи: `cd ~/opencode-mem-architecture && git add BUGS-REPORT.md && git commit -m "bug-report: <STAMP>" && git push origin main`
+- Не перезапускать себя.
