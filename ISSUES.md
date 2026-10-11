@@ -90,7 +90,7 @@ See `CONTEXT_V1.md`. Implement a flag-gated in-memory substitution of older comp
 
 **Acceptance:** сессия с одним user-prompt и ≥3 assistant-сообщениями сжимается (debug-лог непустой), рабочий набор и user-окно дословны. — Закрыт.
 
-## ISSUE-20 (GitHub #20, OPEN) — Cache-стабильная проекция: mid-turn компакция удорожает сессию
+## ISSUE-20 (GitHub #20, CLOSED 2026-10-11 — PR #21 boundary batches + PR #22 MIDTURN gate, acceptance: cost parity) — Cache-стабильная проекция: mid-turn компакция удорожает сессию
 
 Найдено тем же замером: MEM on дал −44.7% provider-visible токенов, но **+69.7% фактической стоимости** (0.011368 → 0.019295 USD): граница компакции сдвигается на одно сообщение каждый шаг → prompt-prefix-кеш инвалидируется от newly-compacted сообщения (`cache_read` залипает на ~8.8k = system+маркеры), а ещё полные хвостовые tool-выводы пересылаются некешированными (`input` +83.9%, `cache_hit_rate` 0.82 → 0.42). Точный прайсинг-модель, выведенная из замеров (2026-10-10, точное соответствие): `cost = 1.412e-7 × uncached + 3.06e-9 × cache_read` → **cache read ≈ 2.2% от uncached (~45× дешевле)** — любая перезапись уже отправленной истории на таком провайдере проигрывает.
 
