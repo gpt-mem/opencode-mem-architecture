@@ -192,3 +192,41 @@
 - Не выставлять оценку «сжимаем», пока `max_compacted=0` — контекст: 4/5 на прогоне без единого маркера
 
 (Только констатация фактов из лога 10:36, цепочки 1036 и смежных артефактов; решения не предлагались.)
+
+## BUG-REPORT 20261012-123843
+
+Источник: `~/.opencode/scripts/selftest-logs/selftest-20261012-123843.log` (95012 байт / 1083 строки, наибольший по mtime, **1 ход из 10** — только T1, `fork at df078835d5`, `DONE`-маркера и трейлеров нет), контекст: `release-current.md`, `chain-logs/chain-20261012-1238.log`, `chain-state.jsonl`, ITERATIONS (последние 10 записей).
+
+### Проблемы
+- Привязка сессии по sentinel провалена сразу после T1 — 9 ходов из 10 пропущены — последняя строка лога: `session: NOT-BOUND (sentinel 'ST-20261012-123843' не найден) — оставшиеся ходы пропущены` — high
+- Цикл selftest↔release оборван: chain-state `{"step":"selftest","exit":70,"dur_s":68,"status":"failed"}` → `{"step":"release","exit":77,"dur_s":0,"status":"withheld"}`; chain-log `RELEASE withheld: selftest exit=70 (status=failed) — верификация прогона не пройдена` — high
+- Приёмочных трейлеров нет вовсе: нет `=== SELFTEST 20261012-123843 DONE ===`, `compaction:`, `acceptance:`; 0 строк `assistant in=`/`cache_r=`/`cost=` (в 103636 — 21 такая строка + оба трейлера) — medium
+- Высокий вопрос прошлого отчёта остался без ответа: `compaction:` в этом прогоне не выдавался вообще — сравнение 8/2/12 (083306) ↔ 0/0/0 (103636) продолжить нечем — medium
+- Live-покрытие приёмки нулевое: выполнен только T1 («Вызови get_tool_call_overview и покажи результат»); find_pii/find/details/put/search/needle и оценка 4/5 не перепроверялись — streak «find_pii live в 3 прогона подряд» (072607 → 083306 → 103636) оборван — medium
+- Установленный бинарь отстаёт от тестируемого tip: `installed binary: 0.0.0-memory-context-v1-202610120739` (= 8f1b12e1b4) против `fork at df078835d5`; релиз withheld → «слито ≠ доступно» на момент прогона не снято — medium
+- Входной артефакт `release-current.md` устарел: mtime 10:40, заголовок `Что нового (с mem-v20261012-0847-e9d8b11d3f)` при выпущенном `mem-v20261012-1040-8f1b12e1b4`; `4e46d4773a` (#71) и `df078835d5` (#72) в файле отсутствуют (grep 0) — medium (хвост #70)
+- Сборочные предупреждения осели в логе selftest: `(node:17046) [DEP0205] DeprecationWarning: module.register()`, 3× vite «dynamic import will not move module into another chunk», `The emitted file "assets/wasm-CG6Dc4jp.js.map" overwrites a previously emitted file of the same name`, `(!) Some chunks are larger than 500 kB` (index-BTRjfMPb.js 2740 kB, ghostty-web 1381 kB) — low
+- Харнесс: selftest-часть = строки 1061–1083 (23 строки), остальные ~1040 строк — git/bun/vite-вывод; 95 KB против 15–19 KB у здоровых прогонов — low
+- critical: **0** — `grep -E "FAIL|Error|panic|assert"` → 0 совпадений; case-insensitive — только DeprecationWarning/Warning-строки сборки
+
+Регрессия vs предыдущих циклов (ITERATIONS): (1) первый провал selftest после двух последовательных успешных — 083306 и 103636 оба sentinel-bound, 10 ходов, `exit=0` (сессии 52/56), цепочка 1036 `status:ok` ×2; в chain-state это **единственные** записи с `status ≠ ok` (28 строк); (2) NOT-BOUND — 2-й случай из 19 логов (14 полных, 3 skip «fork dirty», 2 NOT-BOUND; первый — 082958, разобран сессией 53); контракт фикса сессии 52 держится (явный `exit 70`, а не тихое присоединение к чужой сессии), но сама привязка упала впервые после его внедрения; (3) улучшение — впервые ходы шли на бинаре из verify-слона с SHA-гейтом: `run binary: /tmp/opencode-mem-verify/packages/opencode/dist/opencode-darwin-arm64/bin/opencode (0.0.0-memory-context-v1-df078835d5f5-202610120938) — SHA совпал с fork at df078835d5` (в 103636 трейлер фиксировал mismatch `verify_sha=8f1b12e1b4` vs `binary=…0546`, #70b); (4) не воспроизводятся/не проверены: hint #64, дубли op-memory, оценка 4/5 — прогон до T10 не дошёл; (5) tip `df078835d5` = PR #72 (`fix(script): embed git SHA in preview build version (#72)`, git log форка) не упомянут в ITERATIONS/ISSUES/BUGS-REPORT (grep 0).
+
+### Паттерны
+- NOT-BOUND даёт одинаковый силуэт в обоих случаях (082958, 123843): ровно 1 ход, 0 строк `assistant in=`, нет DONE/compaction/acceptance — против 10 ходов и 21–22 трейлер-строк в здоровых 083306/103636
+- Единственный из 19 логов со сборкой: `grep -l "vite v7" *.log` → 1 файл; в прогон ушли git fetch, `bun add` ×3 («Saved lockfile» ×3), vite 14.91s и 9 платформенных сборок — до этого все прогоны шли на установленном бинаре
+- Sentinel доставлен модели: T1-ответ «Метка ST-20261012-123843 принята» — провал не на стороне промпта, а на стороне поиска в БД
+- Причина диагностирована постфактум в скрипте (mtime 12:43, прогона — 12:39): комментарий «бинарь с channel=memory-context-v1 пишет в opencode-memory-context-v1.db, source-запуск (channel=local) — в opencode-local.db, сток — в opencode.db → ищем sentinel во всех opencode*.db (issue #70, прогон 123843)»; в версии, гонявшей прогон, перебор был только `opencode-local.db` + `opencode.db` (git diff chain/run-selftest.sh, uncommitted) — текст ошибки в логе `не найден`, в текущей версии — `не найден в opencode*.db`
+- Гард «релиз только после полного selftest» отработал: release exit=77, dur_s=0 (chain-log `RELEASE withheld`); skip-контракт (exit 78) в этот раз не понадобился
+- Статус-строка `⚙ get_tool_call_overview 1 tool calls across 0 tools` байт-в-байт как в 103636 — memory-тулы считаются в `total`, не в `groups` (#48), поведение без изменений
+- PII-хвост: сырых email/phone в логе нет (T3 не выполнялся), `REDACTED`=0; 3 совпадения regex на email — имена пакетов (`installed @opentui/core@0.4.5`, `@parcel/watcher@2.5.1`, `@ff-labs/fff-bun@0.9.4`)
+- В шапке лога триада распадается на две строки: `installed binary: …202610120739` (строка 9) и `fork at df078835d5` (строка 8) — расхождение читается только по ним, acceptance-трейлер его не зафиксировал
+
+### Идеи (as is)
+- Автоповтор selftest при NOT-BOUND (или явный rerun-шаг) — контекст: 68 s, весь цикл withheld; 2 случая из 19
+- Перебирать все `opencode*.db` при поиске sentinel (правка уже появилась в скрипте после прогона) — контекст: расхождение канала БД собранного бинаря и списка поиска; в логе — `не найден` без указания БД
+- Печатать путь/канал БД до старта ходов, а не только в строке успеха — контекст: при провале канал, куда смотрел скрипт, из лога не восстановить
+- Выносить вывод сборки из selftest-лога (отдельный лог или однострочное саммари) — контекст: ~1040/1083 строк — vite asset list, приёмочные строки тонут в конце
+- Обновлять `release-current.md` на каждом release-шаге и сверять заголовок с последним тегом — контекст: заголовок 0847 при выпущенном 1040, #71/#72 отсутствуют
+- Печатать acceptance-строку (`verify_sha`/`binary`/`installed`) и при провале привязки — контекст: трейлер не выдан, расхождение installed/fork восстанавливалось вручную из строк 8–9 и 1060
+
+(Только констатация фактов из лога 12:38, цепочки 1238 и смежных артефактов; решения не предлагались.)
