@@ -21,5 +21,11 @@
 
     <key>StandardErrorPath</key>
     <string>/Users/vova/.opencode/scripts/chain-logs/launchd-stderr.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/Users/vova/bin</string>
+    </dict>
 </dict>
 </plist>

@@ -136,8 +136,7 @@ log "DOCS PUSH (safety net)"
 # Формат: selftest-<STAMP>.log (до 10MB), chain-state.jsonl (последние 50 строк).
 # Не заливаем: chain-last.md, STUDY.md, BUGS-REPORT.md — они в GitHub docs-репо.
 
-GDRIVE_SA_EMAIL="vovako-21js@trained-assist-gdrive-sa.iam.gserviceaccount.com"
-GDRIVE_FOLDER_ID="1yA2KUcjVV9V3mwk1u5rTFI1p5DAsNb9B"
+GDRIVE_FOLDER_ID="1LOUSoTtWr-Z4YScefw2RETJar4oxln8X"
 
 # PII-инвариант: в облако уходит редактированная копия — сырые email/phone из
 # selftest-сценария не должны размножаться в артефактах (issue #67).
@@ -165,13 +164,26 @@ upload_to_drive() {
     upload="/tmp/redacted-$(basename "$file")"
     redact_copy "$file" "$upload"
   fi
-  # gcloud storage cp — надёжнее, чем googleapis
-  if command -v gcloud >/dev/null 2>&1; then
-    gcloud storage cp "$upload" "gs://opencode-mem-artifacts/chain/$STAMP/$(basename "$file")" --project aiqarus-web 2>> "$LOG" \
-      && log "Drive OK: $file → gs://..." || log "Drive FAIL: $file"
-  else
-    log "Drive SKIP: gcloud not found"
-  fi
+  # Google Drive API по токену gcloud (папка "logs sessions", owner kobzevvv@gmail.com)
+  local token name
+  token=$(gcloud auth print-access-token 2>/dev/null) || { log "Drive SKIP: no gcloud token"; [ "$upload" = "$file" ] || rm -f "$upload"; return 0; }
+  name="$(date +%Y%m%d-%H%M)-$(basename "$file")"
+  curl -s -X POST \
+    -H "Authorization: Bearer $token" \
+    -H "Content-Type: multipart/related; boundary=memchainboundary" \
+    --data-binary @- \
+    "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true" \
+    >> "$LOG" 2>&1 <<EOF && log "Drive OK: $name" || log "Drive FAIL: $name"
+--memchainboundary
+Content-Type: application/json; charset=UTF-8
+
+{"name":"$name","parents":["$GDRIVE_FOLDER_ID"]}
+--memchainboundary
+Content-Type: text/plain; charset=UTF-8
+
+$(cat "$upload")
+--memchainboundary--
+EOF
   [ "$upload" = "$file" ] || rm -f "$upload"
 }
 
