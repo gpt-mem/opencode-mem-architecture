@@ -150,3 +150,45 @@
 - Redact PII в selftest-логах перед заливкой в GCS — контекст: сырые email/phone в шаримом логе
 
 (Только констатация фактов из лога 07:26, цепочки 0725 и смежных артефактов; решения не предлагались.)
+
+## BUG-REPORT 20261012-103636
+
+Источник: `~/.opencode/scripts/selftest-logs/selftest-20261012-103636.log` (18576 байт, наибольший по mtime, 10 ходов T1–T10, `fork at 8f1b12e1b4`, `=== SELFTEST 20261012-103636 DONE ===`, skip-маркера нет), контекст: `release-current.md`, `chain-20261012-1036.log`, `chain-state.jsonl`, `releaser-20261012-103915.log`, `memory-context.log`, ITERATIONS (последние 10 записей).
+
+### Проблемы
+- Компактация = 0 — регрессия к прошлому полному прогону: `compaction: log_lines=0` / `0 max_compacted=0 final_mark=0` против `compaction: log_lines=8 max_compacted=2 final_mark=12` в `selftest-20261012-083306`; модель в T9: «полный вывод `read` doc2.md сохранён», «Добор через `get_tool_call_details` не потребовался» — retrieve-путь из-под компакт-маркера в прогоне не упражнялся — high
+- Оценка 4/5 выставлена прогону без единого сжатия — T10 «принцип „сжимаем но ничего не прячем“ — оценка 4/5» при `max_compacted=0` — повтор критики сессии 52 о прогоне 07:26 — medium
+- 3 дубля одного решения без supersedes + provenance — T5 «есть ещё две более ранние записи с тем же содержанием», T10 «3 дубля одного решения в памяти без автодедупа, и мой записан `authority=agent` без `decided_by`, хотя вы задали формулировку как принятое» — трение с приёмкой I3a «user/agent decisions cannot be conflated» — medium
+- Ложный ноль на user-paste — третий раз — T3 `find_pii 0 tool calls with email PII` + `find_tool_calls 0 matching tool calls` → после `read` T6 `find_pii 1 tool calls with email PII` — открытый #66 — medium
+- Phone-PII: отчёт T10 утверждает «`+7-999-123-45-67` … детектор не распознал — реальная дыра», но оба вызова прогона — `find_pii -> {"type":"email"}` (строки 215, 222), `type=phone` не запрашивался, `REDACTED:phone`=0 (в 083306 тоже 0; ×1 был только в 072607 на grep-носителе) — утверждение логом не подкреплено, покрытие phone не проверено — medium
+- Сценарий без единого bash-вызова (хвост лога: 7 memory-тулов + 3 `read`) → `exit_code`/`failed`-фильтр из PR #69 (верхушка release notes) без live-покрытия; рекуррентная проблема «`status: completed` при упавшей команде» этим прогоном не перепроверялась — medium
+- Memory-тулы невидимы в find — T7 «В индексе `find_tool_calls` только 3 вызова … поэтому „последних 5“ нет» при `get_tool_call_overview 16 tool calls across 1 tools`; T10 «агрегат есть, а провенанс вызова не восстановить» — известное #34/#48 — low
+- Группировка агрегата — T10 «`groups_total=1` вместо ожидаемого больше — группируются только не-memory вызовы» — low
+- Харнесс: строка компакции рвётся (`compaction: log_lines=0`↵`0 max_compacted=0 final_mark=0`) и предупреждение `compaction: NONE — сцена не спровоцировала компактацию` не вывелось — `run-selftest.sh:189` `grep -c … || echo 0` даёт «0\n0», сравнение с `"0"` не проходит — low
+- Харнесс: doc1 не «плотный» — «он короткий (4 строки), needle в нём на виду» (T4) — low
+- critical: **0** — `grep -E "FAIL|Error|panic|assert"` → 0 совпадений; T10 «Технических ошибок: ноль. Все 16 вызовов `completed`»
+
+Регрессия vs предыдущих циклов (ITERATIONS) — одна содержательная: компакция 8/2/12 → 0/0/0; между прогонами слиты только PR #68 (`run.ts`) и #69 (find-tool-calls core/opencode, `prompt.ts` shellImpl exit-code, `run.ts` finish) — сам хук `MemoryContext.projectV1` (`prompt.ts:1316`) дифф не трогал, в `memory-context.log` для `session=ses_ed0f52c0bffe…` 0 строк при 5339 строках файла (debug пишется только при `compacted>0`, `memory-context.ts:291,379`). Не воспроизводятся: T5/T6-пробел заголовков (все 10 TURN на месте), «completed при упавшей команде» (упавших нет — bash в сценарии отсутствует), `groups_total` ≠ сумме `groups`. Держатся: hint PR #64 (`search_operational_memory 0 matching memories (4 match the filters)` — 2-й прогон подряд, в 083306 «(3 …)»), find_pii email (3-й прогон: 072607 → 083306 → 103636), ретрив решения (`search_operational_memory 3 matching memories` против 0 ×9), sentinel-привязка (`session: ses_ed0f52c0bffe… (source=sentinel)`).
+
+### Паттерны
+- Релизные теги не указывают на релизный код: все 8 `mem-*`-тегов origin → один коммит `0112a92c4` («chore(triage): add vimtor to inference issue owners (#52425)» = tip `origin/dev`), в имени тега другой SHA; releaser пишет `New commits: 46 (last tag: mem-v20261012-0847-e9d8b11d3f)` — guard `run-releaser.sh:62` («rev-list = 0 → релиз не нужен») структурно не срабатывает, работает только проверка имени тега по SHA (`:57`)
+- `release-current.md` (входной артефакт): «Что нового (с mem-v20261012-0847-e9d8b11d3f)» = 40 строк (`head -40` при `LOG_RANGE=$LAST_TAG..HEAD` = весь бранч) при фактическом дельта `e9d8b11d3f..8f1b12e1b4` = 2 коммита
+- Приёмочная тройка не сходилась на момент прогона: `acceptance: verify_sha=8f1b12e1b4 binary=0.0.0-memory-context-v1-202610120546` (бинарь = e9d8b11d3f, без PR #68/#69; в 083306 тоже mismatch `e9d8b11d3f` vs `…0425`); сам прогон шёл на коде форка (`bun run packages/opencode/src/index.ts` в worktree); дрейф снят через 4 минуты — релиз `mem-v20261012-1040-8f1b12e1b4` (07:40:50Z), бинарь `0.0.0-memory-context-v1-202610120739` установлен
+- Порядок цепочки держится (фикс сессии 52): chain-state `{"step":"selftest","exit":0,"dur_s":159,"status":"ok"}` (10:39:15) → `{"step":"release","exit":0,"dur_s":99,"status":"ok"}` (10:40:54)
+- Самый быстрый полный прогон из записанных: 159s против 280/286/552; трейлер 21 assistant-строка, все `cache_r>0`, суммарно $0.00885 (083306: $0.01179, 22 строки)
+- Сырой PII остаётся в локальном логе (email в 4 строках, phone в 3), наружу уходит редактированная копия (`run-mem-chain.sh:141` `redact_copy`) — фикс сессии 52 держится
+- Смежные сессии в том же окне пишут `[mem-context] … compacted=45/30 …`, у сессии прогона 0 строк — ноль событий компакции, а не обрыв записи
+- Индекс прогона содержит только email-плейсхолдеры: `redacted_placeholders=5 email_placeholders=5` (083306: 4/4), phone-плейсхолдеров нет
+- Скоупинг op-memory работает: запись T2 `scope=ST-20261012-103636`; дубли прошлых прогонов остаются без supersedes
+
+### Идеи (as is)
+- Индексировать реплики пользователя для find/find_pii — контекст: T3 0 → T6 1; T10 «нарушается на границе чат↔тулы» (уже issue #66)
+- Расширять детекцию phone-форматов и покрытие больших выводов — контекст: T10 «отсутствие match ≠ отсутствие PII», в прогоне ни одного phone-запроса
+- Возвращать memory-тулы в find/details или отдельный провенанс-view — контекст: «агрегат есть, а провенанс вызова не восстановить»
+- Автодедуп/supersedes-предложение при повторной записи того же решения — контекст: 3 дубля, модель сама: «Могу перезаписать через `supersedes`»
+- `decided_by=user` при записи решения, сформулированного пользователем — контекст: T5 «корректнее было `decided_by=user`»
+- bash-ходы в сценарии selftest + проверки exit_code/failed — контекст: 0 bash-вызовов, PR #69 без live-покрытия
+- Проверять релиз по target-SHA тега, а не по имени — контекст: 8 тегов на одном коммите `origin/dev`
+- Не выставлять оценку «сжимаем», пока `max_compacted=0` — контекст: 4/5 на прогоне без единого маркера
+
+(Только констатация фактов из лога 10:36, цепочки 1036 и смежных артефактов; решения не предлагались.)
