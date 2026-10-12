@@ -115,3 +115,38 @@
 - Записывать SHA/tip и в skip-ветку selftest-лога — контекст: skip-лог не содержит `fork at …`
 
 (Только констатация фактов из логов цепочки 04:52; решения не предлагались.)
+
+## BUG-REPORT 20261012-072607
+
+Источник: `~/.opencode/scripts/selftest-logs/selftest-20261012-072607.log` (18799 байт, наибольший по mtime, 10 ходов T1–T4, T7–T12, форк `fork at 965a967aa4`), контекст: `chain-20261012-0725.log`, `chain-state.jsonl`, `releaser-20261012-072524.log`, `run-selftest.sh`, `run-mem-chain.sh`, `memory-context.log`, `opencode-local.db`.
+
+### Проблемы
+- Хвостовые метрики лога сняты с чужой сессии: `session: ses_ed1d95007ffeZgImojZVHZ95Ax` — это benchmark-сессия (создана 06:27, содержит `find_tool_calls -> {"query":"DEPLOY-CODE-NEEDLE"}` от 06:32, ровно 11 assistant-сообщений = 11 строк `assistant in=…` трейлера); фактическая selftest-сессия `ses_ed28a837effe5uMO6CTZa7J3e0` (T1-промпт в 07:26:10, `call_bfd990989b87404cb28dda22` из T10 в ней же, 44 assistant-сообщения, `cache_r=45184…69184`); источник — `run-selftest.sh`: `SELECT id FROM session ORDER BY time_created DESC LIMIT 1` (по времени создания, не по записи прогона) — high
+- Проверка PII-маркеров структурно пустая: `0 markers with pii=` — запрос `part.data LIKE '%pii=%'` по всей `opencode-local.db` даёт 0 совпадений (маркеры не персистятся в parts; 4 части с `mem:` — цитаты `[mem:compacted]` из текста модели) — medium
+- Статус вызова не отражает исход команды — `ls: /var/folders/1m/v4ljzvzx5x566w1r067w5vmw0000gn/T/tmp.l9fwT4AVP4/: No such file or directory` и таблица T9: `| 5 | call_7ae32ba3b0614313a12f2203 | bash | completed | ls старого tmp.l9fwT4AVP4 → No such file |` — medium (3-й лог подряд: 20261012-000748, 20261012-023539)
+- Вложения не найдены glob'ом, старый носитель удалён — `✱ Glob "**/doc{1,2,3}.md" 0 matches`; документы найдены только `ls` в новом `tmp.ncI1LHFus5` — medium
+- PII-ложный ноль в T3 при последующем 2: `find_pii 0 tool calls with email PII`, `find_tool_calls 0 matching tool calls`, `search_operational_memory 0 matching memories (2 match the filters)` на вставленной почте vs T12 `find_pii 2 tool calls with email PII` (counts: email ×2, phone ×1) — medium (видимость зависит от носителя: текст сообщения ≠ tool-call)
+- Харнесс: TURN T5/T6 отсутствуют — `--- TURN T4` → сразу `--- TURN T7`, ход с вложением `--file doc1–doc3` в логе идёт без заголовка `--- TURN` — low
+- critical: **0** — `grep -E "FAIL|Error|panic|assert"` → 0 совпадений; chain `selftest exit=0 dur=552s`, первый полный прогон после skip 04:53
+
+Регрессий vs предыдущих циклов (ITERATIONS) по коду не найдено, напротив — закрыты прежние провалы приёмки: `find_pii` в списке тулов и работает (2 лога подряд «отсутствует» → приёмка «слито ≠ доступно» пройдена); hint PR #64 live (`0 matching memories (2 match the filters)` — закрывает «live-приёмка hint» сессии 48); ретрив решения работает (T2 `1 matching memories`, T7 `2 matching memories` против 0 ×9 проходов); `groups_total`-расхождение не воспроизводится (T1 `16 = 2 + 14`, T12 `29 = 7 + 22`, `groups_total: 2` = число групп в `groups`). Новое: корень паттерна «байт-идентичный хвост 5 прогонов» (BUG-REPORT 20261012-000748/023539) — трейлер всегда писал новейшую по созданию сессию (00:07 и 02:35 → `ses_ed4cd38b3ffe`, созданная 11.10 16:41, ровно 2 assistant-строки в обоих логах), то есть прошлые приёмки «`cache_r>0` / `0 markers with pii=`» сделаны на чужой сессии.
+
+### Паттерны
+- `--continue` копит харнесс-сессию между прогонами: T1-промпт лежит в `ses_ed28a837effe` и в прогоне 05:56, и в 07:26 (до 02:35 — в `ses_ed788d98effe`); отсюда `total: 16` уже на T1 — 14 memory-вызовов из прошлого прогона (`search 5, overview 4, find_tool_calls 2, find_pii 1, details 1, put 1`)
+- Выбор сессии трейлера детерминирован временем создания: 05:56 → `ses_ed271578fffe` (созд. 00:41), 07:26 → `ses_ed1d95007ffe` (созд. 06:27) — обе benchmark-сессии (ITERATIONS 47/48), не selftest
+- Карьер-чёрнинг носителей продолжается: `rm -rf "$DOC_DIR"` в конце каждого прогона, сессия живёт дальше — в истории остаются пути в удалённый `tmp.l9fwT4AVP4`, glob-результаты устаревают
+- Утечка маской держится: grep `NEEDLE\|Release ID\|CM-\|escalation` индексируется вместе с email/phone → `find_pii` находит (`call_bfd990989b87404cb28dda22` — email + phone), выдача редактируется (`[REDACTED:email]`); при этом сам лог содержит сырые email ×3 и phone ×4, а `run-mem-chain.sh` шаг 7 заливает selftest-логи в `gs://opencode-mem-artifacts/chain/<stamp>/`
+- Компакция на прогоне работала стабильно: `memory-context.log` — 21 строка `session=ses_ed28a837effe … compacted=1 first_delivery=true protected_from=Infinity mark=14`; `protected_from=Infinity` доминирует в логе в целом (3855 из 4662 строк)
+- Порядок цепочки: `release 07:26:07 exit=0 dur=43` → `selftest 07:35:19 exit=0 dur=552`; в `run-mem-chain.sh:82` закреплено «релиз идёт ДО selftest» против guard'а `prompt.txt:45` «Релиз — только после полного selftest»; SHA-сверка при этом сошлась: `fork at 965a967aa4` == тег `mem-v20261012-0725-965a967aa4` == бинарь `0.0.0-memory-context-v1-202610120425`
+- Дрейф tip после прогона: к моменту разбора `origin/memory-context-v1` = `e9d8b11d3f` (PR #65), selftest и релиз — на `965a967aa4`, т.е. установленный бинарь отстаёт на 1 коммит
+
+### Идеи (as is)
+- Фиксировать session id прогона в самом логе и брать трейлер-метрики по нему — контекст: `session:` в логе указывает на benchmark-сессию
+- Не писать метрики молча, если сессия прогона не найдена, — контекст: 11 чужих assistant-строк выглядят как метрики selftest
+- Считать PII-маркеры по debug-логу/по месту, а не по `parts` — контекст: `LIKE '%pii=%'` = 0 по всей БД
+- Подписать ход с вложением `--- TURN T5` — контекст: T4 → T7 без промежуточного заголовка
+- Пер-прогонный temp-каталог + инвалидация устаревших путей в активной сессии — контекст: удалённый `tmp.l9fwT4AVP4` и устаревший glob
+- Привести порядок шагов chain к guard'у (или guard к факту) — контекст: релиз 07:26:07 раньше selftest 07:26–07:35 при `prompt.txt:45`
+- Redact PII в selftest-логах перед заливкой в GCS — контекст: сырые email/phone в шаримом логе
+
+(Только констатация фактов из лога 07:26, цепочки 0725 и смежных артефактов; решения не предлагались.)
