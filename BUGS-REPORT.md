@@ -82,3 +82,36 @@
 - Разделить статусы: «тул завершён» / «команда успешна», «индекс не усёк» / «данные полны» — контекст: `completed` при упавшей команде, `truncated:false` про индекс
 
 (Все идеи — из финального отчёта T12 «что подняло бы до 5» при оценке 3/5; только констатация.)
+
+## BUG-REPORT 20261012-045342
+
+Источник: `~/.opencode/scripts/selftest-logs/selftest-20261012-045342.log` (наибольший по mtime, **86 байт, 1 строка** — прогон не выполнялся). Контекст: `chain-logs/chain-20261012-0452.log`, `chain-state.jsonl`, `chain-logs/launchd-stdout.log`, `releaser-logs/releaser-20261012-043740.log`, `releaser-logs/releaser-20261012-045257.log`, `run-selftest.sh`, `run-mem-chain.sh`.
+
+### Проблемы
+- Selftest не выполнен: лог целиком = одна строка `fork dirty (другая сессия работает) — selftest пропущен`, нет ни ходов, ни маркера `=== SELFTEST … DONE ===`; `grep -E "FAIL|Error|panic|assert"` — 0 совпадений — high
+- Пропуск записан как успех: `{"step":"selftest","exit":0,"dur_s":1}` (chain-state) и `STEP selftest END exit=0 dur=1s` (launchd-stdout) против `dur=280s` (00:07) и `dur=286s` (02:35); источник — `run-selftest.sh:34` `exit 0` на ветке dirty — high
+- Ни одного полного selftest на текущем коде: последний полный лог (02:35) начинается с `fork at 379d4ac8db`; после него слиты #56/#57/#59 (tip `642fc48162`), установлен бинарь `0.0.0-memory-context-v1-202610120153` (в бинарю присутствуют `get_operational_memory`, `put_in_operational_memory`, `search_operational_memory`, `find_pii`); приёмка сессии 42 «верификация следующим selftest-логом (~06:35)» этим прогоном не состоялась — high
+- Причина пропуска — чужой WIP в форке: `git status` в `/tmp/opencode-mem` — `M packages/core/src/tool/builtins.ts`, `M packages/core/test/location-layer.test.ts`, `?? packages/core/src/tool/get-operational-memory.ts`, `?? packages/core/src/tool/put-in-operational-memory.ts`, `?? packages/core/src/tool/search-operational-memory.ts`, `?? packages/core/src/session/mem-record-store.ts`, `?? packages/core/test/tool-operational-memory-v2.test.ts` (V2-регистрация #13, по ISSUES — хвост без issue) — medium
+- Третий пропуск в серии: 86-байтные логи `selftest-20261011-122850.log`, `selftest-20261011-205028.log`, `selftest-20261012-045342.log` — 3 из 13 файлов каталога; первые два уже зафиксированы в ITERATIONS («лог 12:28 пропущен», «лог 20:50 пропущен») — medium
+- Дубль-релиз одного SHA за 15 минут: GitHub `MEM build mem-v20261012-0438-642fc48162` (2026-10-12T01:38:22Z) и `MEM build mem-v20261012-0453-642fc48162` (2026-10-12T01:53:39Z); оба прогона releaser пишут `New commits: 40 (last tag: mem-v20261012-0318-b4bb44a44c)`, в форке локально только 3 тега `mem-*` (последний — `0318`) — guard `run-releaser.sh:33-34` «релиз не нужен» не срабатывает — medium
+- Разный TZ в идентификаторах одного билда: тег `…-0453` (локальный +03:00) vs версия бинаря `202610120153` и `created …T01:53:39Z` (UTC) — low
+- critical: **0** — ни падений, ни ассертов, ни паник: их в логе нет вовсе
+
+Регрессий vs предыдущих циклов (ITERATIONS) не установлено — прогон не выполнялся, данных для сравнения нет; открытые находки лога 02:35 (`find_pii` не в списке тулов, ретрив решения `0`, `groups_total` ≠ сумме `groups`) этим прогоном **не перепроверены**.
+
+### Паттерны
+- Skip-лог байт-в-байт одинаков во всех трёх случаях: 86 байт, та же строка пропуска — «fork dirty (другая сессия работает) — selftest пропущен»
+- Порядок шагов цепочки: `run-mem-chain.sh:82` release → `:85` selftest → `:88` bug-reporter; в прогоне 0452 релиз опубликован (`release published: mem-v20261012-0453-642fc48162`, 44s) раньше selftest (1s, пропущен), bug-reporter запущен с пустым логом
+- Дрейф покрытия: selftest-лог отстаёт от установленного бинаря на 3 коммита (#56/#57/#59); skip-лог не содержит `fork at …`, SHA приходится восстанавливать по прошлому логу
+- Хвост полных прогонов не различает запуски: session `ses_ed4cd38b3ffeK7k4E5K1bh2pmS`, `in=41 out=36 cache_r=10688 cost=5.10664e-05`, `0 markers with pii=` — байт-идентичен 00:07/02:35; в логе 04:53 хвоста нет совсем
+- Прогресс параллельной сессии виден в форке в реальном времени (V2-тулы в работе) — грязное дерево есть, selftest ждёт его завершения
+
+### Идеи (as is)
+- Отличимый статус `skipped` в chain-state и логах шага — контекст: `exit=0 dur=1s` неотличим от пройденного прогона, downstream не различает
+- Отложенный/повторный selftest, когда дерево чистое — контекст: 3 пропуска из 13, причина — чужой WIP
+- Порядок шагов selftest → release — контекст: релиз опубликован при пропущенном selftest
+- Синхронизировать локальные теги форка с GitHub перед guard «релиз не нужен» — контекст: два GitHub-релиза одного SHA за 15 минут
+- Единый TZ для имени тега и версии бинаря — контекст: `0453` vs `0153`/`01:53:39Z` у одного билда
+- Записывать SHA/tip и в skip-ветку selftest-лога — контекст: skip-лог не содержит `fork at …`
+
+(Только констатация фактов из логов цепочки 04:52; решения не предлагались.)
