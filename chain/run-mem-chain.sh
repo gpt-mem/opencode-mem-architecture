@@ -51,8 +51,17 @@ fi
 echo $$ > "$LOCK_DIR/pid"
 trap 'rm -rf "$LOCK_DIR"' EXIT
 
-state() { printf '{"ts":"%s","run":"%s","step":"%s","exit":%d,"dur_s":%d}\n' \
-  "$(date -Iseconds)" "$STAMP" "$1" "$2" "$3" >> "$STATE"; }
+state() { printf '{"ts":"%s","run":"%s","step":"%s","exit":%d,"dur_s":%d,"status":"%s"}\n' \
+  "$(date -Iseconds)" "$STAMP" "$1" "$2" "$3" "$4" >> "$STATE"; }
+
+# exit 78 = сам селфтест объявил «skipped» — это НЕ успех (issue #67).
+status_of() {
+  case "$1" in
+    0) echo "ok" ;;
+    78) echo "skipped" ;;
+    *) echo "failed" ;;
+  esac
+}
 
 step_script() {
   local name="$1" cmd="$2"
@@ -60,8 +69,9 @@ step_script() {
   log "STEP $name START: $cmd"
   bash -c "$cmd" >> "$LOG" 2>&1
   local code=$? dur=$(( $(date +%s) - t0 ))
-  log "STEP $name END exit=$code dur=${dur}s"
-  state "$name" "$code" "$dur"
+  log "STEP $name END exit=$code dur=${dur}s status=$(status_of "$code")"
+  state "$name" "$code" "$dur" "$(status_of "$code")"
+  LAST_STEP_EXIT=$code
 }
 
 step_session() {
@@ -71,18 +81,27 @@ step_session() {
   ( cd "$DOCS" && "$OC" run --model "$MODEL" --auto --title "chain-$name" \
       "$(cat "$prompt_file")" ) >> "$LOG" 2>&1
   local code=$? dur=$(( $(date +%s) - t0 ))
-  log "STEP $name END exit=$code dur=${dur}s"
-  state "$name" "$code" "$dur"
+  log "STEP $name END exit=$code dur=${dur}s status=$(status_of "$code")"
+  state "$name" "$code" "$dur" "$(status_of "$code")"
 }
 
 echo "$STAMP" > "$SCRIPTS/chain-current.txt"
 log "MEM-CHAIN $STAMP START"
 
-# 1. РЕЛИЗ — сборка форка, GitHub Release, установка бинаря; ноты в release-current.md
-step_script release "bash $SCRIPTS/run-releaser.sh"
-
-# 2. СЕЛФТЕСТ — dogfooding на активном бинаре (fork)
+# Порядок шагов (issue #67): СЕЛФТЕСТ → РЕЛИЗ. Релиз собирается и публикуется
+# только после полного selftest того же SHA; skipped/failed (exit 78/≠0) релиз
+# удерживает — иначе бинарь уезжает на непроверенном tip (циклы 20261012-0452/0725).
+# 1. СЕЛФТЕСТ — dogfooding на изолированном клоне tip
 step_script selftest "bash $SCRIPTS/run-selftest.sh"
+SELFTEST_EXIT=$LAST_STEP_EXIT
+
+# 2. РЕЛИЗ — сборка того же SHA, GitHub Release, установка бинаря
+if [ "$SELFTEST_EXIT" = "0" ]; then
+  step_script release "MEM_REQUIRE_SELFTEST=1 MEM_SELFTEST_OK=1 bash $SCRIPTS/run-releaser.sh"
+else
+  log "RELEASE withheld: selftest exit=$SELFTEST_EXIT (status=$(status_of "$SELFTEST_EXIT")) — верификация прогона не пройдена"
+  state release 77 0 "withheld"
+fi
 
 # 3. БАГ-РЕПОРТЕР — систематизация проблем/идей по итогам селфтеста
 step_session bug-reporter "$SCRIPTS/prompt-bug-reporter.txt"
@@ -120,6 +139,16 @@ log "DOCS PUSH (safety net)"
 GDRIVE_SA_EMAIL="vovako-21js@trained-assist-gdrive-sa.iam.gserviceaccount.com"
 GDRIVE_FOLDER_ID="1yA2KUcjVV9V3mwk1u5rTFI1p5DAsNb9B"
 
+# PII-инвариант: в облако уходит редактированная копия — сырые email/phone из
+# selftest-сценария не должны размножаться в артефактах (issue #67).
+redact_copy() {
+  local src="$1" dst="$2"
+  sed -E \
+    -e 's/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/[REDACTED:email]/g' \
+    -e 's/\+[0-9][0-9() -]{6,}[0-9]/[REDACTED:phone]/g' \
+    "$src" > "$dst"
+}
+
 upload_to_drive() {
   local file="$1" mime="${2:-text/plain}"
   if [ ! -f "$file" ]; then
@@ -131,13 +160,19 @@ upload_to_drive() {
     log "Drive upload SKIP: $file >10MB ($size bytes) — слишком большой"
     return 0
   fi
+  local upload="$file"
+  if [[ "$mime" == text/* ]]; then
+    upload="/tmp/redacted-$(basename "$file")"
+    redact_copy "$file" "$upload"
+  fi
   # gcloud storage cp — надёжнее, чем googleapis
   if command -v gcloud >/dev/null 2>&1; then
-    gcloud storage cp "$file" "gs://opencode-mem-artifacts/chain/$STAMP/$(basename "$file")" --project aiqarus-web 2>> "$LOG" \
+    gcloud storage cp "$upload" "gs://opencode-mem-artifacts/chain/$STAMP/$(basename "$file")" --project aiqarus-web 2>> "$LOG" \
       && log "Drive OK: $file → gs://..." || log "Drive FAIL: $file"
   else
     log "Drive SKIP: gcloud not found"
   fi
+  [ "$upload" = "$file" ] || rm -f "$upload"
 }
 
 # Selftest-лог этого цикла
