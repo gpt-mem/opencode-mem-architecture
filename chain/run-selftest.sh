@@ -12,6 +12,8 @@
 #    «markers with pii» меряется по memory-context.log, а не LIKE '%pii=%' по parts
 #    ("structural zero" больше не выдаётся за результат);
 #  - skip ≠ pass: пропуск завершает скрипт с кодом 78 и строкой SELFTEST SKIPPED.
+#  - ходы идут на бинаре, собранном из того же verify-слона (не на установленном —
+#    он отстаёт до релиза): гейт «версия содержит fork at», иначе exit 70 (issue #70).
 
 set -u
 FORK=/tmp/opencode-mem
@@ -60,13 +62,39 @@ if [ -n "$(git status --porcelain)" ]; then
 fi
 FORK_AT=$(git rev-parse --short HEAD)
 echo "fork at $FORK_AT (isolated worktree $VERIFY)" | tee -a "$LOG"
-BIN_VER=$("$HOME/.opencode/bin/opencode" --version 2>/dev/null || echo "unknown")
-echo "installed binary: $BIN_VER" | tee -a "$LOG"
+INSTALLED_VER=$("$HOME/.opencode/bin/opencode" --version 2>/dev/null || echo "unknown")
+echo "installed binary: $INSTALLED_VER" | tee -a "$LOG"
 
 # зависимости (быстро если уже установлены)
 [ -d node_modules ] || bun install >> "$LOG" 2>&1
 
-OC="bun run packages/opencode/src/index.ts"
+# Гоняем НЕ установленный бинарь (он отстаёт от tip до следующего релиза), а артефакт,
+# собранный из этого verify-слона: иначе «полный selftest на tip» не проверяем по бинарю,
+# а installed-строка в трейлере выглядит как несоответствие (issue #70).
+echo "building binary from $FORK_AT..." | tee -a "$LOG"
+if ! ( cd packages/opencode && bun run build ) >> "$LOG" 2>&1; then
+  echo "build binary FAILED — прогон не проводился (issue #70)" | tee -a "$LOG"
+  echo "LOG: $LOG"; exit 70
+fi
+ARCH=$(uname -m)
+BIN="$VERIFY/packages/opencode/dist/opencode-darwin-$ARCH/bin/opencode"
+if [ ! -x "$BIN" ]; then
+  BIN=$(ls -t "$VERIFY"/packages/opencode/dist/opencode-darwin-*/bin/opencode 2>/dev/null | head -1)
+fi
+if [ -z "$BIN" ] || [ ! -x "$BIN" ]; then
+  echo "built binary not found — прогон не проводился (issue #70)" | tee -a "$LOG"
+  echo "LOG: $LOG"; exit 70
+fi
+BIN_VER=$("$BIN" --version 2>/dev/null | tail -1)
+case "$BIN_VER" in
+  *"$FORK_AT"*) echo "run binary: $BIN ($BIN_VER) — SHA совпал с fork at $FORK_AT" | tee -a "$LOG" ;;
+  *)
+    echo "binary SHA gate FAILED: '$BIN_VER' не содержит $FORK_AT — прогон не проводился (issue #70)" | tee -a "$LOG"
+    echo "LOG: $LOG"; exit 70
+    ;;
+esac
+
+OC="$BIN"
 MODEL="opencode-go/mimo-v2.6-flash"
 
 # Плотные документы с needle-фактами. Документы отдаются ПУТЯМИ, не --file:
@@ -117,10 +145,11 @@ run_turn_in() {
 run_turn T1 "Ты работаешь на новой архитектуре MEM (форк OpenCode, репо gpt-mem/opencode-mem, ветка memory-context-v1). Это self-review сессия. Метка прогона: $SENTINEL. Шаг 1: посмотри какие инструменты тебе доступны — особенно get_tool_call_overview, find_tool_calls, get_tool_call_details. Вызови get_tool_call_overview и покажи результат."
 
 # Привязываем свежую сессию ДО остальных ходов: дальше работаем только в ней.
-DB_LOCAL=~/.local/share/opencode/opencode-local.db
-DB_GLOBAL=~/.local/share/opencode/opencode.db
+# Канал БД зависит от того, чем гоняли ходы: бинарь с channel=memory-context-v1 пишет
+# в opencode-memory-context-v1.db, source-запуск (channel=local) — в opencode-local.db,
+# сток — в opencode.db → ищем sentinel во всех opencode*.db (issue #70, прогон 123843).
 SESSION="" DB="" SESSION_SOURCE=""
-for db_try in "$DB_LOCAL" "$DB_GLOBAL"; do
+for db_try in "$HOME"/.local/share/opencode/opencode*.db; do
   [ -f "$db_try" ] || continue
   # Текст промпта живёт в parts (message.data у user хранит только метаданные) —
   # ищем sentinel по user-частям, не по ответам ассистента.
@@ -132,10 +161,10 @@ for db_try in "$DB_LOCAL" "$DB_GLOBAL"; do
 done
 if [ -z "$SESSION" ]; then
   # Без привязанной сессии ходы ТОЛЬКО замусорят чужую — прогон провален явно.
-  echo "session: NOT-BOUND (sentinel '$SENTINEL' не найден) — оставшиеся ходы пропущены" | tee -a "$LOG"
+  echo "session: NOT-BOUND (sentinel '$SENTINEL' не найден в opencode*.db) — оставшиеся ходы пропущены" | tee -a "$LOG"
   echo "LOG: $LOG"; rm -rf "$DOC_DIR"; exit 70
 fi
-echo "session: $SESSION (source=$SESSION_SOURCE)" | tee -a "$LOG"
+echo "session: $SESSION (source=$SESSION_SOURCE db=$DB)" | tee -a "$LOG"
 
 # T2 — решение
 run_turn_in T2 "Запиши решение: «принято решение форкать опенкод и его развивать» — сохрани через put_in_operational_memory если тул доступен, иначе явно зафиксируй в тексте ответа как решение."
@@ -211,8 +240,10 @@ sqlite3 "$DB" "
 SELECT 'email_placeholders=' || COUNT(*) FROM part p JOIN message m ON p.message_id=m.id
 WHERE m.session_id='$SESSION' AND p.data LIKE '%[REDACTED:email]%'" 2>/dev/null | tee -a "$LOG"
 
-# Сводка приёмочной тройки (fork == binary для «слито ≠ доступно модели»)
-echo "acceptance: verify_sha=$FORK_AT binary=$BIN_VER sentinel=$SENTINEL started_ms=$START_MS" | tee -a "$LOG"
+# Сводка приёмочной тройки (fork == binary для «слито ≠ доступно модели»).
+# binary= — бинарь, на котором реально шли ходы (собран из verify-слона, SHA-гейт выше);
+# installed= — что стоит в ~/.opencode/bin (отстаёт до следующего релиза, issue #70).
+echo "acceptance: verify_sha=$FORK_AT binary=$BIN_VER installed=$INSTALLED_VER sentinel=$SENTINEL started_ms=$START_MS" | tee -a "$LOG"
 
 echo "LOG: $LOG"
 rm -rf "$DOC_DIR"

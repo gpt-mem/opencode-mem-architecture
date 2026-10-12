@@ -47,6 +47,7 @@ if [ -n "$(git status --porcelain)" ]; then
   git clean -fd >> "$LOG" 2>&1
 fi
 SHA=$(git rev-parse --short HEAD)
+FULL_SHA=$(git rev-parse HEAD)
 echo "HEAD: $SHA (isolated $VERIFY)" | tee -a "$LOG"
 if [ ! -d node_modules ]; then
   bun install >> "$LOG" 2>&1 || { echo "bun install FAILED" | tee -a "$LOG"; exit 1; }
@@ -104,14 +105,18 @@ NOTES=$(mktemp)
   echo "Без флагов поведение ≈ сток."
 } > "$NOTES"
 
-# 5. Публикация релиза (бинарь как asset)
+# 5. Публикация релиза (бинарь как asset).
+# --target обязателен: без него GitHub вешает тег на default-branch (dev), а не на
+# выпущенный SHA — все теги mem-* до 2026-10-12 так и указывают на 0112a92c41 (issue #70).
 cp "$BIN" /tmp/opencode-mem-bin
+REL_OK=1
 gh release create "$TAG" /tmp/opencode-mem-bin \
   --repo "$REPO" \
+  --target "$FULL_SHA" \
   --title "MEM build $TAG" \
   --notes-file "$NOTES" >> "$LOG" 2>&1 \
-  && echo "release published: $TAG" | tee -a "$LOG" \
-  || { echo "RELEASE FAILED (см. лог)" | tee -a "$LOG"; }
+  && { echo "release published: $TAG -> $FULL_SHA" | tee -a "$LOG"; REL_OK=0; } \
+  || echo "RELEASE FAILED (см. лог)" | tee -a "$LOG"
 
 # 6. Установить как активный opencode.
 # ВАЖНО: не перезаписывать файл на месте (cp) — его мапят запущенные opencode-процессы,
@@ -123,10 +128,30 @@ fi
 NEWBIN="$BIN_DIR/opencode.new.$$"
 cp /tmp/opencode-mem-bin "$NEWBIN" && chmod +x "$NEWBIN"
 mv -f "$NEWBIN" "$BIN_DIR/opencode"   # атомарная подмена inode
-echo "installed: $("$BIN_DIR/opencode" --version 2>/dev/null || echo '(занят запущенным процессом, подхватится при новом старте)')" | tee -a "$LOG"
+INSTALLED_VER=$("$BIN_DIR/opencode" --version 2>/dev/null | tail -1)
+echo "installed: ${INSTALLED_VER:-'(занят запущенным процессом, подхватится при новом старте)'}" | tee -a "$LOG"
+
+# 7. Гейт binary == SHA (issue #70): версия со вшитым git SHA обязана содержать
+# собираемый SHA. Старый формат (без SHA) — предупреждение, не отказ: переход.
+if printf '%s' "$INSTALLED_VER" | grep -Eq '[0-9a-f]{12}-[0-9]{12}$'; then
+  case "$INSTALLED_VER" in
+    *"$SHA"*) echo "installed SHA ok: $INSTALLED_VER содержит $SHA" | tee -a "$LOG" ;;
+    *)
+      echo "RELEASE FAILED: installed version '$INSTALLED_VER' не содержит $SHA (issue #70)" | tee -a "$LOG"
+      exit 1
+      ;;
+  esac
+else
+  echo "installed version без git SHA (старый формат, PR #72 не смержен?) — гейт binary==SHA пропущен" | tee -a "$LOG"
+fi
 
 # Сохраняем релиз-ноты для цепочки (mem-chain читает их на шаге баг-репортера)
 cp "$NOTES" "$HOME/.opencode/scripts/release-current.md" 2>/dev/null || true
 rm -f "$NOTES" /tmp/opencode-mem-bin
+if [ "$REL_OK" != "0" ]; then
+  echo "RELEASE FAILED: GitHub Release/$TAG не опубликован (тега нет) — exit 1" | tee -a "$LOG"
+  echo "LOG: $LOG"
+  exit 1
+fi
 echo "=== RELEASE $STAMP DONE ===" | tee -a "$LOG"
 echo "LOG: $LOG"
