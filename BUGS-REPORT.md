@@ -20,6 +20,7 @@
 ### Проверки OpenCode
 
 - Prompt suite: 74 passed, 1 skipped; LLM/native/CLI ladder recovery: 56 passed; package typecheck и arm64 build успешны. Дополнительная проверка исчерпания бюджета для `finish=unknown`: 8 targeted tests passed.
+- Финальная проверка типов: exit 0. После deploy браузер Chromium открыл интерфейс (32 874 байта DOM, без client-side exception). Записанные HTTP fixtures обновлены только в ожидаемых request bodies под manifest: 3 passed, 1 skipped. В PR #117 CI перезапускается; ранее Windows job также показал таймауты Git integration tests.
 - Настоящий провайдер успешно выполнил `read` случайного sentinel-файла и вернул точное содержимое. Новая сборка подключена через `~/.opencode/bin/opencode`, резервная ссылка — `~/.opencode/bin/opencode.before-turn-recovery`. Старые процессы продолжают исполнять прежний бинарь.
 
 ## BUG-REPORT 20261012-000748
