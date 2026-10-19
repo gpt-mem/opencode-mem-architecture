@@ -26,6 +26,28 @@ LOG="$LOG_DIR/releaser-$STAMP.log"
 # launchd даёт минимальный PATH — gh/node живут в homebrew.
 export PATH="$HOME/.local/bun142/bun-darwin-aarch64:$HOME/.bun/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 
+# Токен для публикации релиза.
+#
+# Ключ, который gh хранит у себя в keyring (fine-grained PAT), НЕ умеет
+# публиковать релизы в этом репо: GitHub отвечает 403 "Resource not
+# accessible by personal access token". Проверено на одном и том же запросе:
+# с этим ключом — 403, с classic PAT из локального keychain — успех.
+# Под launchd переменной GH_TOKEN нет, то есть цепочка публиковала релиз
+# именно «неполномочным» ключом и всегда доходила до "RELEASE FAILED".
+# Поэтому, если токен не задан, берём classic PAT из локального keychain.
+if [ -z "${GH_TOKEN:-}" ] && [ -z "${GITHUB_TOKEN:-}" ]; then
+  GH_LOGIN=$(gh api user --jq .login 2>/dev/null || true)
+  if [ -n "$GH_LOGIN" ]; then
+    KEYCHAIN_PAT=$(/usr/bin/security find-generic-password -s github.com -a "$GH_LOGIN" -w 2>/dev/null || true)
+    if [ -n "$KEYCHAIN_PAT" ]; then
+      export GH_TOKEN="$KEYCHAIN_PAT"
+      echo "gh token: classic PAT из локального keychain (логин $GH_LOGIN) — у него есть права на публикацию релизов" | tee -a "$LOG"
+    else
+      echo "gh token: в локальном keychain нет classic PAT для $GH_LOGIN — публикация может не пройти" | tee -a "$LOG"
+    fi
+  fi
+fi
+
 echo "=== RELEASE $STAMP ===" | tee -a "$LOG"
 
 # 0. Гейт: промоушен только после зелёной проверки того же SHA.
@@ -154,6 +176,9 @@ while [ "$try" -le "$RELEASE_TRIES" ]; do
 done
 if [ "$REL_OK" != "0" ]; then
   echo "RELEASE FAILED после $RELEASE_TRIES попыток (см. лог)" | tee -a "$LOG"
+  if grep -q "Resource not accessible by personal access token" "$LOG" 2>/dev/null; then
+    echo "подсказка: токен без прав на публикацию релизов — нужен classic PAT (GH_TOKEN) из локального keychain" | tee -a "$LOG"
+  fi
 fi
 
 # 5. Промоушен локально: mem-builds.sh ставит сборку в builds/<sha12>,
