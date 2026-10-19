@@ -120,14 +120,41 @@ NOTES="$STAGE/notes.md"
 
 # 4. Публикация релиза. --target обязателен: без него GitHub вешает тег на
 # default-branch, а не на выпущенный SHA.
+#
+# GitHub API на POST /releases флапает: на одном и том же токене подряд идут
+# 403 "Resource not accessible by personal access token" и 500 "Unexpected end
+# of JSON input" вперемешку с успехом. Публикация поэтому повторяется, а
+# частичный успех (релиз создан, ассет не догружен) дочищается загрузкой
+# ассета, а не пересозданием релиза.
 REL_OK=1
-gh release create "$TAG" "$STAGE/$ASSET" "$STAGE/$ASSET.sha256" \
-  --repo "$REPO" \
-  --target "$SHA" \
-  --title "MEM build $TAG" \
-  --notes-file "$NOTES" >> "$LOG" 2>&1 \
-  && { echo "release published: $TAG -> $SHA" | tee -a "$LOG"; REL_OK=0; } \
-  || echo "RELEASE FAILED (см. лог)" | tee -a "$LOG"
+RELEASE_TRIES="${MEM_RELEASE_TRIES:-6}"
+try=1
+while [ "$try" -le "$RELEASE_TRIES" ]; do
+  if gh release create "$TAG" "$STAGE/$ASSET" "$STAGE/$ASSET.sha256" \
+      --repo "$REPO" \
+      --target "$SHA" \
+      --title "MEM build $TAG" \
+      --notes-file "$NOTES" >> "$LOG" 2>&1; then
+    echo "release published: $TAG -> $SHA" | tee -a "$LOG"
+    REL_OK=0
+    break
+  fi
+  # Частичный успех: релиз есть, ассет(ы) не догружены.
+  if gh release view "$TAG" --repo "$REPO" >> "$LOG" 2>&1; then
+    echo "release exists, догружаем ассеты (попытка $try)" | tee -a "$LOG"
+    if gh release upload "$TAG" "$STAGE/$ASSET" "$STAGE/$ASSET.sha256" --clobber --repo "$REPO" >> "$LOG" 2>&1; then
+      echo "release published: $TAG -> $SHA" | tee -a "$LOG"
+      REL_OK=0
+      break
+    fi
+  fi
+  echo "release publish failed (попытка $try/$RELEASE_TRIES), повтор через 15с" | tee -a "$LOG"
+  sleep 15
+  try=$((try + 1))
+done
+if [ "$REL_OK" != "0" ]; then
+  echo "RELEASE FAILED после $RELEASE_TRIES попыток (см. лог)" | tee -a "$LOG"
+fi
 
 # 5. Промоушен локально: mem-builds.sh ставит сборку в builds/<sha12>,
 # двигает current/previous, пишет манифест и регистрирует сборки в Session
