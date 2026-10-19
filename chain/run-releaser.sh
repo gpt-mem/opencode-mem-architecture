@@ -1,155 +1,155 @@
 #!/bin/bash
-# Releaser: собирает форк, публикует GitHub Release, ставит бинарь как активный opencode.
-# Запускается mem-chain'ом ПОСЛЕ selftest (issue #67) или вручную.
+# RELEASER: промоушен проверенного кандидата.
 #
-# Сборка идёт из изолированного клона /tmp/opencode-mem-verify (тот же каталог,
-# что у selftest): рабочее дерево /tmp/opencode-mem, где идут сессии, в сборку
-# не попадает → SHA бинаря == SHA проверенного прогона, дерево всегда чистое.
+# Шаг 3 цепочки «кандидат → проверка → промоушен». Публикует релиз, ставит
+# сборку через mem-builds.sh (каталог сборок, симлинки current/previous,
+# манифест, регистрация в Session Manager) и подменяет активный бинарь.
+#
+# Активный бинарь трогается ТОЛЬКО после зелёной проверки того же SHA:
+# сценарий проверки пишет ~/.opencode/scripts/selftest-last.json, и этот файл
+# обязан совпасть с кандидатом. Без совпадения — exit 77, ничего не меняется.
 
 set -u
-FORK=/tmp/opencode-mem
 VERIFY=/tmp/opencode-mem-verify
-BRANCH=memory-context-v1
+BRANCH=v2-base
 REPO=gpt-mem/opencode-mem
 LOG_DIR=~/.opencode/scripts/releaser-logs
+CANDIDATE_STATE=~/.opencode/scripts/candidate-current.json
+SELFTEST_STATE=~/.opencode/scripts/selftest-last.json
+BIN_DIR="$HOME/.opencode/bin"
+MEM_BUILDS_SCRIPT="${MEM_BUILDS_SCRIPT:-$HOME/opencode-mem-architecture/chain/mem-builds.sh}"
+[ -x "$MEM_BUILDS_SCRIPT" ] || MEM_BUILDS_SCRIPT="$HOME/.opencode/scripts/mem-builds.sh"
 mkdir -p "$LOG_DIR"
 STAMP=$(date +%Y%m%d-%H%M%S)
 LOG="$LOG_DIR/releaser-$STAMP.log"
-BIN_DIR="$HOME/.opencode/bin"
 
-# launchd даёт минимальный PATH (/usr/bin:/bin:...) — gh/node живут в homebrew.
-export PATH="$HOME/.bun/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+# launchd даёт минимальный PATH — gh/node живут в homebrew.
+export PATH="$HOME/.local/bun142/bun-darwin-aarch64:$HOME/.bun/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 
 echo "=== RELEASE $STAMP ===" | tee -a "$LOG"
 
-# 0. Гейт: релиз после полного selftest того же tip (mem-chain выставляет оба ключа)
+# 0. Гейт: промоушен только после зелёной проверки того же SHA.
 if [ "${MEM_REQUIRE_SELFTEST:-0}" = "1" ] && [ "${MEM_SELFTEST_OK:-0}" != "1" ]; then
   echo "RELEASE withheld: MEM_REQUIRE_SELFTEST=1 без MEM_SELFTEST_OK=1 (нет полного selftest)" | tee -a "$LOG"
   exit 77
 fi
 
-# 1. Изолированный клон (самодостаточный)
-if [ ! -d "$VERIFY/.git" ]; then
-  if [ -d "$FORK/.git" ]; then
-    git clone --branch "$BRANCH" "file://$FORK" "$VERIFY" >> "$LOG" 2>&1 \
-      || git clone --branch "$BRANCH" "https://github.com/$REPO.git" "$VERIFY" >> "$LOG" 2>&1
-  else
-    git clone --branch "$BRANCH" "https://github.com/$REPO.git" "$VERIFY" >> "$LOG" 2>&1
+# 1. Кандидат: тот же SHA, что и в проверке.
+if [ ! -f "$CANDIDATE_STATE" ]; then
+  echo "RELEASE withheld: нет кандидата ($CANDIDATE_STATE)" | tee -a "$LOG"
+  exit 77
+fi
+SHA=$(sed -n 's/.*"sha"[[:space:]]*:[[:space:]]*"\([0-9a-f]\{7,40\}\)".*/\1/p' "$CANDIDATE_STATE" | head -1)
+SHA12=$(sed -n 's/.*"sha12"[[:space:]]*:[[:space:]]*"\([0-9a-f]\{7,40\}\)".*/\1/p' "$CANDIDATE_STATE" | head -1)
+CAND_BIN=$(sed -n 's/.*"binary"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$CANDIDATE_STATE" | head -1)
+[ -n "$SHA" ] && [ -n "$SHA12" ] && [ -n "$CAND_BIN" ] || { echo "RELEASE withheld: кандидат не описан" | tee -a "$LOG"; exit 77; }
+[ -x "$CAND_BIN" ] || { echo "RELEASE withheld: кандидат недоступен: $CAND_BIN" | tee -a "$LOG"; exit 77; }
+
+if [ -f "$SELFTEST_STATE" ]; then
+  SELFTEST_SHA=$(sed -n 's/.*"sha12"[[:space:]]*:[[:space:]]*"\([0-9a-f]\{7,40\}\)".*/\1/p' "$SELFTEST_STATE" | head -1)
+  SELFTEST_STATUS=$(sed -n 's/.*"status"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$SELFTEST_STATE" | head -1)
+  if [ "$SELFTEST_SHA" != "$SHA12" ] || [ "$SELFTEST_STATUS" != "ok" ]; then
+    echo "RELEASE withheld: проверка касалась $SELFTEST_SHA (статус $SELFTEST_STATUS), а кандидат — $SHA12" | tee -a "$LOG"
+    exit 77
   fi
-fi
-cd "$VERIFY" || { echo "no verify clone" | tee -a "$LOG"; exit 1; }
-git fetch origin "$BRANCH" >> "$LOG" 2>&1
-git checkout "$BRANCH" >> "$LOG" 2>&1
-git pull --ff-only origin "$BRANCH" >> "$LOG" 2>&1 || git reset --hard "origin/$BRANCH" >> "$LOG" 2>&1
-if [ -n "$(git status --porcelain)" ]; then
-  echo "verify tree dirty после синхронизации — чистим перед сборкой" | tee -a "$LOG"
-  git reset --hard "origin/$BRANCH" >> "$LOG" 2>&1
-  git clean -fd >> "$LOG" 2>&1
-fi
-SHA=$(git rev-parse --short HEAD)
-FULL_SHA=$(git rev-parse HEAD)
-echo "HEAD: $SHA (isolated $VERIFY)" | tee -a "$LOG"
-if [ ! -d node_modules ]; then
-  bun install >> "$LOG" 2>&1 || { echo "bun install FAILED" | tee -a "$LOG"; exit 1; }
+  echo "gate: selftest ok for $SHA12" | tee -a "$LOG"
+else
+  echo "RELEASE withheld: нет отчёта проверки ($SELFTEST_STATE)" | tee -a "$LOG"
+  exit 77
 fi
 
-# 2. Дубль-релиз того же SHA (guard: локальные теги синхронизируем с remote)
-git fetch --tags origin >> "$LOG" 2>&1
-if git tag -l "mem-*-${SHA}" | grep -q .; then
-  echo "Release for $SHA уже существует ($(git tag -l "mem-*-${SHA}" | head -1)) — дубль не публикуем" | tee -a "$LOG"
+CAND_VER=$("$CAND_BIN" --version 2>/dev/null | head -1)
+echo "candidate: $SHA12 ($CAND_VER)" | tee -a "$LOG"
+
+# 2. Дубль-релиз того же SHA — не публикуем дважды.
+git -C "$VERIFY" fetch --tags origin >> "$LOG" 2>&1
+if git -C "$VERIFY" tag -l "mem-*-${SHA12}" | grep -q .; then
+  echo "Release for $SHA12 уже существует ($(git -C "$VERIFY" tag -l "mem-*-${SHA12}" | head -1)) — дубль не публикуем" | tee -a "$LOG"
   exit 0
 fi
-LAST_TAG=$(git tag -l 'mem-*' --sort=-v:refname | head -1)
-if [ -n "$LAST_TAG" ] && [ "$(git rev-list --count $LAST_TAG..HEAD)" = "0" ]; then
-  echo "No new commits since $LAST_TAG — релиз не нужен" | tee -a "$LOG"
-  exit 0
-fi
-NEW_COMMITS=$(git rev-list --count ${LAST_TAG:+$LAST_TAG..}HEAD)
-echo "New commits: $NEW_COMMITS (last tag: ${LAST_TAG:-none})" | tee -a "$LOG"
 
-# 3. Сборка бинаря (выбираем правильную архитектуру)
-cd "$VERIFY/packages/opencode" || exit 1
-echo "building binary..." | tee -a "$LOG"
-bun run build >> "$LOG" 2>&1
-ARCH=$(uname -m)  # arm64 | x64
-BIN="$VERIFY/packages/opencode/dist/opencode-darwin-$ARCH/bin/opencode"
-if [ ! -x "$BIN" ]; then
-  BIN=$(ls -t "$VERIFY"/packages/opencode/dist/opencode-darwin-*/bin/opencode 2>/dev/null | head -1)
-fi
-if [ -z "$BIN" ] || [ ! -x "$BIN" ]; then
-  echo "BUILD FAILED" | tee -a "$LOG"
-  exit 1
-fi
-echo "binary: $BIN ($("$BIN" --version 2>/dev/null))" | tee -a "$LOG"
+# 3. Тег + ассеты. Имя архива совпадает с форматом, который ждёт гейт
+# промоушена агента: opencode-<os>-<arch>.tar.gz + .sha256.
+ARCH=$(uname -m)
+OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+ASSET="opencode-${OS}-${ARCH}.tar.gz"
+STAGE=$(mktemp -d)
+mkdir -p "$STAGE/bin"
+cp -f "$CAND_BIN" "$STAGE/bin/opencode" && chmod +x "$STAGE/bin/opencode"
+tar -czf "$STAGE/$ASSET" -C "$STAGE/bin" opencode
+( cd "$STAGE" && shasum -a 256 "$ASSET" > "$ASSET.sha256" )
+echo "asset: $ASSET ($(stat -f%z "$STAGE/$ASSET" 2>/dev/null || stat -c%s "$STAGE/$ASSET") bytes)" | tee -a "$LOG"
 
-# 4. Тег + Release notes (ограничиваем диф от dev, не всю историю)
-TAG="mem-v$(date +%Y%m%d-%H%M)-${SHA}"
-LOG_RANGE="${LAST_TAG:+$LAST_TAG..}origin/dev..HEAD"
-if [ -n "$LAST_TAG" ]; then LOG_RANGE="$LAST_TAG..HEAD"; fi
-NOTES=$(mktemp)
+TAG="mem-v$(date +%Y%m%d-%H%M)-${SHA12}"
+NOTES="$STAGE/notes.md"
 {
-  echo "OpenCode MEM — ранний билд для тестирования."
+  echo "OpenCode MEM (v2) — сборка форка для локальной машины."
   echo ""
-  echo "## Что нового (с ${LAST_TAG:-origin/dev})"
-  git -C "$VERIFY" log "$LOG_RANGE" --oneline | sed 's/^/- /' | head -40
+  echo "## Сборка"
+  echo "- SHA: \`$SHA\`"
+  echo "- версия: \`$CAND_VER\`"
+  echo "- линия: \`$BRANCH\`"
   echo ""
-  echo "## Как тестировать"
-  echo "Бинарь уже установлен как активный \`~/.opencode/bin/opencode\` (сток сохранён рядом как \`opencode.stock-backup\`)."
+  echo "## Как поставить"
+  echo '```'
+  echo "tar -xzf $ASSET -C /tmp && install -m 0755 /tmp/opencode ~/.opencode/bin/opencode"
+  echo '```'
   echo ""
-  echo "Флаги MEM (все default off):"
-  echo '- \`OPENCODE_MEMORY_CONTEXT=1\` — компакт-маркеры старых tool-выводов'
-  echo '- \`OPENCODE_MEMORY_FIRST_DELIVERY=1\` — маркер с первой доставки (B0, максимум экономии)'
-  echo '- \`OPENCODE_MEMORY_INTENT=1\` (+\`_ACT=1\`) — трекер интентов'
-  echo '- \`OPENCODE_MEMORY_CONTEXT_DEBUG=1\` — лог компактации'
+  echo "Сток лежит рядом как \`~/.opencode/bin/opencode.stock-backup\`."
+  echo "Полная раскладка сборок (current/previous, откат) — в README форка."
   echo ""
-  echo "Без флагов поведение ≈ сток."
+  echo "## Флаги v2"
+  echo '- `OPENCODE_CACHE_MASK=0` — выключить маску кэша (по умолчанию включена)'
+  echo '- `OPENCODE_CACHE_MARK_IDLE_MS` — через сколько мс простоя считать scope холодным'
 } > "$NOTES"
 
-# 5. Публикация релиза (бинарь как asset).
-# --target обязателен: без него GitHub вешает тег на default-branch (dev), а не на
-# выпущенный SHA — все теги mem-* до 2026-10-12 так и указывают на 0112a92c41 (issue #70).
-cp "$BIN" /tmp/opencode-mem-bin
+# 4. Публикация релиза. --target обязателен: без него GitHub вешает тег на
+# default-branch, а не на выпущенный SHA.
 REL_OK=1
-gh release create "$TAG" /tmp/opencode-mem-bin \
+gh release create "$TAG" "$STAGE/$ASSET" "$STAGE/$ASSET.sha256" \
   --repo "$REPO" \
-  --target "$FULL_SHA" \
+  --target "$SHA" \
   --title "MEM build $TAG" \
   --notes-file "$NOTES" >> "$LOG" 2>&1 \
-  && { echo "release published: $TAG -> $FULL_SHA" | tee -a "$LOG"; REL_OK=0; } \
+  && { echo "release published: $TAG -> $SHA" | tee -a "$LOG"; REL_OK=0; } \
   || echo "RELEASE FAILED (см. лог)" | tee -a "$LOG"
 
-# 6. Установить как активный opencode.
-# ВАЖНО: не перезаписывать файл на месте (cp) — его мапят запущенные opencode-процессы,
-# macOS даёт SIGKILL на exec изменённого маппинга. Копируем в НОВЫЙ файл и атомарно mv.
+# 5. Промоушен локально: mem-builds.sh ставит сборку в builds/<sha12>,
+# двигает current/previous, пишет манифест и регистрирует сборки в Session
+# Manager. Активный бинарь подменяем после этого.
+if [ -x "$MEM_BUILDS_SCRIPT" ]; then
+  "$MEM_BUILDS_SCRIPT" install "$CAND_BIN" --sha "$SHA12" --version "$CAND_VER" >> "$LOG" 2>&1 \
+    && echo "mem-builds: installed $SHA12" | tee -a "$LOG" \
+    || { echo "mem-builds install FAILED" | tee -a "$LOG"; exit 1; }
+else
+  echo "mem-builds.sh не найден ($MEM_BUILDS_SCRIPT) — сборка не поставлена" | tee -a "$LOG"
+  exit 1
+fi
+
+# Активный бинарь: не перезаписываем файл на месте (cp) — его мапят запущенные
+# opencode-процессы, macOS даёт SIGKILL на exec изменённого маппинга.
+# Копируем в НОВЫЙ файл и атомарно mv.
 if [ ! -f "$BIN_DIR/opencode.stock-backup" ]; then
-  cp -f "$BIN_DIR/opencode" "$BIN_DIR/opencode.stock-backup"
-  echo "stock backed up -> opencode.stock-backup" | tee -a "$LOG"
+  cp -f "$BIN_DIR/opencode" "$BIN_DIR/opencode.stock-backup" && echo "stock backed up" | tee -a "$LOG"
 fi
 NEWBIN="$BIN_DIR/opencode.new.$$"
-cp /tmp/opencode-mem-bin "$NEWBIN" && chmod +x "$NEWBIN"
-mv -f "$NEWBIN" "$BIN_DIR/opencode"   # атомарная подмена inode
-INSTALLED_VER=$("$BIN_DIR/opencode" --version 2>/dev/null | tail -1)
-echo "installed: ${INSTALLED_VER:-'(занят запущенным процессом, подхватится при новом старте)'}" | tee -a "$LOG"
+cp -f "$HOME/.opencode/builds/$SHA12/opencode" "$NEWBIN" && chmod +x "$NEWBIN"
+mv -f "$NEWBIN" "$BIN_DIR/opencode"
+INSTALLED_VER=$("$BIN_DIR/opencode" --version 2>/dev/null | head -1)
+echo "installed: ${INSTALLED_VER:-(занят запущенным процессом, подхватится при новом старте)}" | tee -a "$LOG"
 
-# 7. Гейт binary == SHA (issue #70): версия со вшитым git SHA обязана содержать
-# собираемый SHA. Старый формат (без SHA) — предупреждение, не отказ: переход.
-if printf '%s' "$INSTALLED_VER" | grep -Eq '[0-9a-f]{12}-[0-9]{12}$'; then
-  case "$INSTALLED_VER" in
-    *"$SHA"*) echo "installed SHA ok: $INSTALLED_VER содержит $SHA" | tee -a "$LOG" ;;
-    *)
-      echo "RELEASE FAILED: installed version '$INSTALLED_VER' не содержит $SHA (issue #70)" | tee -a "$LOG"
-      exit 1
-      ;;
-  esac
-else
-  echo "installed version без git SHA (старый формат, PR #72 не смержен?) — гейт binary==SHA пропущен" | tee -a "$LOG"
-fi
+case "$INSTALLED_VER" in
+  *"$SHA12"*) echo "installed SHA ok: $INSTALLED_VER содержит $SHA12" | tee -a "$LOG" ;;
+  *)
+    echo "RELEASE FAILED: installed version '$INSTALLED_VER' не содержит $SHA12" | tee -a "$LOG"
+    exit 1
+    ;;
+esac
 
-# Сохраняем релиз-ноты для цепочки (mem-chain читает их на шаге баг-репортера)
 cp "$NOTES" "$HOME/.opencode/scripts/release-current.md" 2>/dev/null || true
-rm -f "$NOTES" /tmp/opencode-mem-bin
+rm -rf "$STAGE"
 if [ "$REL_OK" != "0" ]; then
-  echo "RELEASE FAILED: GitHub Release/$TAG не опубликован (тега нет) — exit 1" | tee -a "$LOG"
+  echo "RELEASE FAILED: GitHub Release/$TAG не опубликован (тега нет)" | tee -a "$LOG"
   echo "LOG: $LOG"
   exit 1
 fi

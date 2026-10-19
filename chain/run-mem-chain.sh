@@ -1,9 +1,11 @@
 #!/bin/bash
-# MEM-CHAIN: релиз → селфтест → баг-репортер → учёный → архитектор.
+# MEM-CHAIN: кандидат → проверка → промоушен → баг-репортер → учёный → архитектор.
 # Запускается launchd local.opencode.mem-chain каждые 2 часа (StartInterval 7200).
 #
 # Системно с описанием релиза апдейта:
-#   - релиз (run-releaser.sh) кладёт ноты в release-current.md
+#   - run-build.sh собирает кандидата (v2-base, packages/cli) в стейджинг
+#   - run-selftest.sh проверяет кандидата и пишет отчёт selftest-last.json
+#   - run-releaser.sh публикует релиз и ставит сборку (mem-builds.sh install)
 #   - селфтест логируется, отчёт — в selftest-logs/
 #   - баг-репортер читает release-current.md + selftest-logs
 #   - учёный читает BUGS-REPORT/STUDY + SQL-метрики
@@ -20,7 +22,9 @@ set -u
 SCRIPTS="$HOME/.opencode/scripts"
 DOCS="/Users/vova/opencode-mem-architecture"
 OC="$HOME/.opencode/bin/opencode"
-MODEL="opencode-go/mimo-v2.6-flash"
+# Модель: ladder/build есть и в стоке, и в сборке форка (opencode-go в v2-раскладке
+# форка не зарегистрирован). Переопределяется переменной MEM_MODEL.
+MODEL="${MEM_MODEL:-ladder/build}"
 STAMP=$(date +%Y%m%d-%H%M)
 LOCK_DIR="$SCRIPTS/chain.lock"
 LOG_DIR="$SCRIPTS/chain-logs"
@@ -88,14 +92,26 @@ step_session() {
 echo "$STAMP" > "$SCRIPTS/chain-current.txt"
 log "MEM-CHAIN $STAMP START"
 
-# Порядок шагов (issue #67): СЕЛФТЕСТ → РЕЛИЗ. Релиз собирается и публикуется
-# только после полного selftest того же SHA; skipped/failed (exit 78/≠0) релиз
-# удерживает — иначе бинарь уезжает на непроверенном tip (циклы 20261012-0452/0725).
-# 1. СЕЛФТЕСТ — dogfooding на изолированном клоне tip
-step_script selftest "bash $SCRIPTS/run-selftest.sh"
-SELFTEST_EXIT=$LAST_STEP_EXIT
+# Порядок шагов: КАНДИДАТ → ПРОВЕРКА → ПРОМОУШЕН.
+# Кандидат собирается и уходит в стейджинг, активный бинарь на этом шаге не
+# трогается. Проверка идёт по кандидату. Промоушен (релиз + установка сборки)
+# выполняется только после зелёной проверки того же SHA — иначе бинарь уезжает
+# на непроверенной сборке (циклы 20261012-0452/0725).
+# 1. КАНДИДАТ — сборка v2-кандидата в стейджинг
+step_script build "bash $SCRIPTS/run-build.sh"
+BUILD_EXIT=$LAST_STEP_EXIT
 
-# 2. РЕЛИЗ — сборка того же SHA, GitHub Release, установка бинаря
+# 2. ПРОВЕРКА — полный selftest на кандидате
+if [ "$BUILD_EXIT" = "0" ]; then
+  step_script selftest "bash $SCRIPTS/run-selftest.sh"
+  SELFTEST_EXIT=$LAST_STEP_EXIT
+else
+  log "SELFTEST withheld: build exit=$BUILD_EXIT (status=$(status_of "$BUILD_EXIT")) — кандидата нет"
+  state selftest 77 0 "withheld"
+  SELFTEST_EXIT=77
+fi
+
+# 3. ПРОМОУШЕН — GitHub Release, установка сборки (mem-builds.sh), активный бинарь
 if [ "$SELFTEST_EXIT" = "0" ]; then
   step_script release "MEM_REQUIRE_SELFTEST=1 MEM_SELFTEST_OK=1 bash $SCRIPTS/run-releaser.sh"
 else
