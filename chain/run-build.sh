@@ -65,6 +65,14 @@ fi
 # → define в packages/cli/script/build.ts), поэтому в ней есть SHA сборки —
 # на этом же держится гейт «бинарь == проверяемый SHA» в run-selftest.sh.
 export OPENCODE_VERSION="0.0.0-fork-at-$SHA12"
+# Канал вшивается в бинарь тем же define и ОПРЕДЕЛЯЕТ ИМЯ ФАЙЛА БАЗЫ:
+# packages/cli/src/database-path.ts берёт opencode.db только для каналов
+# latest|dev|beta|next|prod, иначе opencode-<канал>.db. Без явного канала
+# скрипт сборки выводит его из имени ветки (packages/script/src/index.ts),
+# и форк уезжал в отдельную базу opencode-v2-base.db: у пользователя исчезали
+# креды (модель mem-gpt/build отдавала 401 unauthorized) и все 161 сессия.
+# Форк заменяет стоковый бинарь — значит обязан делить с ним базу.
+export OPENCODE_CHANNEL="latest"
 echo "building candidate ($OPENCODE_VERSION)..." | tee -a "$LOG"
 if ! ( cd packages/cli && bun run script/build.ts --single --skip-install --skip-web-ui ) >> "$LOG" 2>&1; then
   echo "BUILD FAILED — кандидата нет" | tee -a "$LOG"

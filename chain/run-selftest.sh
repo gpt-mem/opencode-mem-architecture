@@ -70,6 +70,34 @@ case "$CAND_VER" in
   *) fail "SHA-гейт кандидата не пройден: '$CAND_VER' не содержит $CAND_SHA" ;;
 esac
 
+# --- Гейт: кандидат обязан делить пространство данных со стоком ---
+# Форк заменяет стоковый бинарь, поэтому он обязан открывать ту же базу.
+# Иначе у пользователя пропадают креды (у модели, ключ которой лежит в
+# хранилище кредов, приходит 401 unauthorized) и вся история сессий.
+# Имя файла базы задаёт канал сборки (packages/cli/src/database-path.ts):
+# opencode.db для latest|dev|beta|next|prod, иначе opencode-<канал>.db.
+# Путь к базе сообщает сам бинарь: `opencode debug paths`.
+STOCK_BIN="$HOME/.opencode/bin/opencode.stock-backup"
+strip_ansi() { sed 's/\x1b\[[0-9;]*m//g'; }
+CAND_DB=$("$CAND_BIN" debug paths 2>/dev/null | awk '/^db /{print $2; exit}')
+[ -n "$CAND_DB" ] || fail "кандидат не сообщил путь к базе (opencode debug paths) — пространство данных нечем проверить"
+if [ -x "$STOCK_BIN" ]; then
+  STOCK_DB=$("$STOCK_BIN" debug paths 2>/dev/null | awk '/^db /{print $2; exit}')
+  [ -n "$STOCK_DB" ] || fail "сток-бэкап не сообщил путь к базе — пространство данных нечем сверить"
+  if [ "$CAND_DB" != "$STOCK_DB" ]; then
+    fail "кандидат открывает другую базу: $CAND_DB, а сток — $STOCK_DB (форк обязан делить базу с заменяемым стоком)"
+  fi
+  # Хранилище кредов: у пользователя оно не пустое, и форк обязан его видеть.
+  CAND_AUTH=$("$CAND_BIN" auth list 2>/dev/null | strip_ansi | tr -s ' ' | sed '/^$/d' | sort)
+  STOCK_AUTH=$("$STOCK_BIN" auth list 2>/dev/null | strip_ansi | tr -s ' ' | sed '/^$/d' | sort)
+  if [ "$CAND_AUTH" != "$STOCK_AUTH" ]; then
+    fail "хранилище кредов кандидата отличается от стока: кандидат=[${CAND_AUTH:-пусто}] сток=[${STOCK_AUTH:-пусто}]"
+  fi
+  echo "check: data namespace shared with stock — ok ($CAND_DB)" | tee -a "$LOG"
+else
+  echo "check: data namespace — сток-бэкап не найден, сверка только с именем базы ($CAND_DB)" | tee -a "$LOG"
+fi
+
 OC="$CAND_BIN"
 MODEL="ladder/build"
 
@@ -100,37 +128,68 @@ open('$BIG_SH','w').write('\n'.join(lines))
 # (OPENCODE_CACHE_MASK и т.п.) действуют именно на эту проверку. Без него
 # ход уходит в общий фоновый сервис, у которого своё окружение.
 run_turn() {
-  local turn="$1"; shift
-  echo "--- TURN $turn: $1" | tee -a "$LOG"
-  $OC run --standalone --model "$MODEL" --auto --session "$SESSION" "$1" >> "$LOG" 2>&1
+  local turn="$1"; local model="$2"; shift 2
+  echo "--- TURN $turn ($model): $1" | tee -a "$LOG"
+  $OC run --standalone --model "$model" --auto --session "$SESSION" "$1" >> "$LOG" 2>&1
+  local rc=$?
+  echo "--- TURN $turn exit=$rc" | tee -a "$LOG"
+  return $rc
 }
 
 # T1 — большой вывод целиком: он не влезает в контекст и уезжает в файл.
-run_turn T1 "Ты работаешь на форке OpenCode MEM (репо gpt-mem/opencode-mem, линия v2-base). Это self-review сессия. Метка прогона: $SENTINEL. Шаг 1: вызови bash-тул с командой 'cat $BIG_SH' и выведи результат как есть."
+run_turn T1 "$MODEL" "Ты работаешь на форке OpenCode MEM (репо gpt-mem/opencode-mem, линия v2-base). Это self-review сессия. Метка прогона: $SENTINEL. Шаг 1: вызови bash-тул с командой 'cat $BIG_SH' и выведи результат как есть."
 
 # Сессия создана с нашим id; sentinel'а в ней быть должно — иначе первый ход
 # ушёл не туда (чужая база, другой профиль, бинарь не тот).
 # База открыта в WAL-режиме: свежие записи лежат в .db-wal, а в самом .db они
 # появляются только после чекпойнта. Поэтому смотрим и sidecar-файл — иначе
 # привязка выглядит незавершённой при вполне успешном ходе.
+# Ищем сначала в базе кандидата: попадание в чужую базу — это ровно тот
+# дефект, который ловит гейт пространства данных (issue #2).
 SESSION_FOUND_IN=""
-for db_try in "$HOME"/.local/share/opencode/*.db; do
+for db_try in "$CAND_DB" "$HOME"/.local/share/opencode/*.db; do
   [ -f "$db_try" ] || continue
   if strings -a "$db_try" "$db_try-wal" 2>/dev/null | grep -qF "$SENTINEL"; then SESSION_FOUND_IN="$db_try"; break; fi
 done
 if [ -z "$SESSION_FOUND_IN" ]; then
   fail "session: NOT-BOUND (sentinel '$SENTINEL' не найден в opencode*.db[-wal]) — оставшиеся ходы пропущены"
 fi
+if [ "$SESSION_FOUND_IN" != "$CAND_DB" ]; then
+  fail "session: кандидат записал сессию в $SESSION_FOUND_IN, а его база — $CAND_DB (пространство данных разъехалось)"
+fi
 echo "session: $SESSION (bound in $SESSION_FOUND_IN)" | tee -a "$LOG"
 
 # T2 — большой вывод: модель видит маркер и путь к файлу.
-run_turn T2 "Прочитай файл $DOC_DIR/doc.md через read-тул (не по памяти) и выпиши needle-факт из последней строки."
+run_turn T2 "$MODEL" "Прочитай файл $DOC_DIR/doc.md через read-тул (не по памяти) и выпиши needle-факт из последней строки."
 
 # T3 — «сжали, но ничего не прячем»: полный вывод лежит в файле, модель его достаёт.
-run_turn T3 "В предыдущем выводе tool'а был маркер вида «[showing … of …; full output saved to <file>]». Возьми этот файл и найди в нём строку с 'big-output-line-2999' через grep или read. Приведи найденную строку."
+run_turn T3 "$MODEL" "В предыдущем выводе tool'а был маркер вида «[showing … of …; full output saved to <file>]». Возьми этот файл и найди в нём строку с 'big-output-line-2999' через grep или read. Приведи найденную строку."
 
 # T4 — финальный отчёт.
-run_turn T4 "Финальный отчёт self-review: 1) как называется маркер ужатого вывода и куда уходит полный вывод; 2) нашёл ли ты needle-факт CM-5581-A; 3) что сломалось или удивило. Ответь по-русски, кратко."
+run_turn T4 "$MODEL" "Финальный отчёт self-review: 1) как называется маркер ужатого вывода и куда уходит полный вывод; 2) нашёл ли ты needle-факт CM-5581-A; 3) что сломалось или удивило. Ответь по-русски, кратко."
+
+# T5 — дефолтная модель пользователя: именно её он зовёт после промоушена.
+# Ключ к ней может лежать в хранилище кредов, а не в конфиге, поэтому этот ход
+# ловит расхождение пространства данных по симптому, а не только по `auth list`.
+DEFAULT_MODEL=""
+for cfg in "$HOME/.config/opencode/opencode.json" "$HOME/.config/opencode/opencode.jsonc"; do
+  [ -f "$cfg" ] || continue
+  if command -v jq >/dev/null 2>&1; then
+    m=$(jq -r '.model // empty' "$cfg" 2>/dev/null | head -1)
+  else
+    m=$(sed -n 's/^[[:space:]]*"model"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$cfg" | head -1)
+  fi
+  [ -n "$m" ] && { DEFAULT_MODEL="$m"; break; }
+done
+if [ -n "$DEFAULT_MODEL" ]; then
+  echo "default model: $DEFAULT_MODEL" | tee -a "$LOG"
+  if ! run_turn T5 "$DEFAULT_MODEL" "Ответь ровно одним словом: ok"; then
+    fail "ход с дефолтной моделью пользователя ($DEFAULT_MODEL) не прошёл — форк не обслуживает модель по умолчанию"
+  fi
+  echo "check: default model served — ok ($DEFAULT_MODEL)" | tee -a "$LOG"
+else
+  echo "default model: в конфиге не найден — T5 пропущен" | tee -a "$LOG"
+fi
 
 echo "=== SELFTEST $STAMP DONE ===" | tee -a "$LOG"
 

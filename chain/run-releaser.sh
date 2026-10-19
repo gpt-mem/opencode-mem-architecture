@@ -58,6 +58,21 @@ else
   exit 77
 fi
 
+# Гейт пространства данных: форк заменяет стоковый бинарь и обязан открывать
+# ту же базу. Иначе промоушен уводит пользователя в пустую параллельную базу:
+# креды и вся история сессий остаются в стоковой, а дефолтная модель отдаёт
+# 401 unauthorized (issue #2). Путь к базе сообщает сам бинарь.
+STOCK_REF="$BIN_DIR/opencode.stock-backup"
+if [ -x "$STOCK_REF" ]; then
+  CAND_DB=$("$CAND_BIN" debug paths 2>/dev/null | awk '/^db /{print $2; exit}')
+  STOCK_DB=$("$STOCK_REF" debug paths 2>/dev/null | awk '/^db /{print $2; exit}')
+  if [ -n "$CAND_DB" ] && [ -n "$STOCK_DB" ] && [ "$CAND_DB" != "$STOCK_DB" ]; then
+    echo "RELEASE withheld: кандидат открывает другую базу ($CAND_DB), сток — $STOCK_DB" | tee -a "$LOG"
+    exit 77
+  fi
+  echo "gate: data namespace shared with stock — ok (${CAND_DB:-неизвестно})" | tee -a "$LOG"
+fi
+
 CAND_VER=$("$CAND_BIN" --version 2>/dev/null | head -1)
 echo "candidate: $SHA12 ($CAND_VER)" | tee -a "$LOG"
 
