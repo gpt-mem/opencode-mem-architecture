@@ -129,9 +129,23 @@ fi
 # Активный бинарь: не перезаписываем файл на месте (cp) — его мапят запущенные
 # opencode-процессы, macOS даёт SIGKILL на exec изменённого маппинга.
 # Копируем в НОВЫЙ файл и атомарно mv.
-if [ ! -f "$BIN_DIR/opencode.stock-backup" ]; then
-  cp -f "$BIN_DIR/opencode" "$BIN_DIR/opencode.stock-backup" && echo "stock backed up" | tee -a "$LOG"
-fi
+# Сток-бэкап — это запасной путь назад на стоковую линию. Он должен быть
+# настоящим стоком: форк (метка "fork-at-<sha>" в версии) стоком быть не
+# может, а устаревший бэкап от другой линии (v1 вместо v2) уводит откат не
+# туда. Поэтому бэкапим активный бинарь, только если он стоковый, и обновляем
+# бэкап, если он другой версии.
+STOCK_BIN="$BIN_DIR/opencode.stock-backup"
+ACTIVE_VER_BEFORE="$("$BIN_DIR/opencode" --version 2>/dev/null | head -1 || true)"
+STOCK_VER="$( [ -f "$STOCK_BIN" ] && "$STOCK_BIN" --version 2>/dev/null | head -1 || true )"
+case "$ACTIVE_VER_BEFORE" in
+  *fork-at-*) echo "stock: активный бинарь — форк ($ACTIVE_VER_BEFORE), бэкап стока не трогаем" | tee -a "$LOG" ;;
+  *)
+    if [ "$STOCK_VER" != "$ACTIVE_VER_BEFORE" ]; then
+      cp -f "$BIN_DIR/opencode" "$STOCK_BIN" \
+        && echo "stock backed up: $ACTIVE_VER_BEFORE (было: ${STOCK_VER:-нет})" | tee -a "$LOG"
+    fi
+    ;;
+esac
 NEWBIN="$BIN_DIR/opencode.new.$$"
 cp -f "$HOME/.opencode/builds/$SHA12/opencode" "$NEWBIN" && chmod +x "$NEWBIN"
 mv -f "$NEWBIN" "$BIN_DIR/opencode"

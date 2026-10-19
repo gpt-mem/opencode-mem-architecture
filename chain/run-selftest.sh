@@ -110,13 +110,16 @@ run_turn T1 "Ты работаешь на форке OpenCode MEM (репо gpt-
 
 # Сессия создана с нашим id; sentinel'а в ней быть должно — иначе первый ход
 # ушёл не туда (чужая база, другой профиль, бинарь не тот).
+# База открыта в WAL-режиме: свежие записи лежат в .db-wal, а в самом .db они
+# появляются только после чекпойнта. Поэтому смотрим и sidecar-файл — иначе
+# привязка выглядит незавершённой при вполне успешном ходе.
 SESSION_FOUND_IN=""
 for db_try in "$HOME"/.local/share/opencode/*.db; do
   [ -f "$db_try" ] || continue
-  if strings -a "$db_try" 2>/dev/null | grep -qF "$SENTINEL"; then SESSION_FOUND_IN="$db_try"; break; fi
+  if strings -a "$db_try" "$db_try-wal" 2>/dev/null | grep -qF "$SENTINEL"; then SESSION_FOUND_IN="$db_try"; break; fi
 done
 if [ -z "$SESSION_FOUND_IN" ]; then
-  fail "session: NOT-BOUND (sentinel '$SENTINEL' не найден в opencode*.db) — оставшиеся ходы пропущены"
+  fail "session: NOT-BOUND (sentinel '$SENTINEL' не найден в opencode*.db[-wal]) — оставшиеся ходы пропущены"
 fi
 echo "session: $SESSION (bound in $SESSION_FOUND_IN)" | tee -a "$LOG"
 
@@ -132,31 +135,34 @@ run_turn T4 "Финальный отчёт self-review: 1) как называе
 echo "=== SELFTEST $STAMP DONE ===" | tee -a "$LOG"
 
 # ── Проверки ───────────────────────────────────────────────────────────────
-# 1) маркер ужатого вывода присутствует в хранилище сессии, и в нём путь к файлу
-MARKER_FOUND=0
-OUT_FILE=""
-for f in "$HOME"/.local/share/opencode/*.db*; do
-  [ -f "$f" ] || continue
-  path=$(strings -a "$f" 2>/dev/null | grep -o 'full output saved to [^ ]*' | head -1 | cut -d' ' -f5-)
-  if [ -n "$path" ]; then MARKER_FOUND=1; OUT_FILE="$path"; break; fi
-  if strings -a "$f" 2>/dev/null | grep -q "full output saved to"; then MARKER_FOUND=1; break; fi
-done
-[ "$MARKER_FOUND" = "1" ] || fail "маркер ужатого вывода не найден в базе — v2-механика не сработала"
-echo "check: truncation marker present — ok" | tee -a "$LOG"
+# 1) маркер ужатого вывода лежит в сообщениях ЭТОЙ сессии, и в нём путь к файлу.
+#    Важно: маркер ищем в сессии, а не «где-нибудь в базе» — база общая на все
+#    сессии, и первый попавшийся маркер принадлежит чужому прогону. Из-за
+#    этого проверка брала файл чужого вывода и объявляла «вывод потерян».
+OUT_FILE=$(sqlite3 "$SESSION_FOUND_IN" \
+  "select data from session_message where session_id='$SESSION' and data like '%full output saved to %' order by seq;" 2>/dev/null \
+  | grep -o 'full output saved to /[^ ]*' | head -1 | cut -d' ' -f5-)
+if [ -z "$OUT_FILE" ]; then
+  # Запасной путь на случай другой схемы хранилища: берём маркер из файлов
+  # сессии и оставляем тот, чей файл действительно содержит полный вывод.
+  for candidate in $(strings -a "$SESSION_FOUND_IN" "$SESSION_FOUND_IN-wal" 2>/dev/null \
+    | grep -o 'full output saved to /[^ ]*' | cut -d' ' -f5- | sort -u); do
+    if [ -f "$candidate" ] && grep -q "big-output-line-2999" "$candidate"; then OUT_FILE="$candidate"; break; fi
+  done
+fi
+[ -n "$OUT_FILE" ] || fail "маркер ужатого вывода не найден в сессии $SESSION — v2-механика не сработала"
+echo "check: truncation marker present — ok ($OUT_FILE)" | tee -a "$LOG"
 
 # 2) файл с полным выводом существует и содержит последнюю строку исходника:
 #    «сжали, но ничего не прячем».
-if [ -z "$OUT_FILE" ] || [ ! -f "$OUT_FILE" ]; then
-  OUT_FILE=$(find "$HOME/.local/share/opencode/tool-output" "$HOME/.local/share/opencode/shell" -type f 2>/dev/null | head -1)
-fi
-[ -n "$OUT_FILE" ] && [ -f "$OUT_FILE" ] || fail "файл полного вывода не найден (путь из маркера: '${OUT_FILE:-нет}')"
+[ -f "$OUT_FILE" ] || fail "файл полного вывода не найден: $OUT_FILE"
 if ! grep -q "big-output-line-2999" "$OUT_FILE"; then
   fail "в файле полного вывода нет последней строки — вывод потерян, а не сжат"
 fi
 echo "check: full output file present and complete — ok ($OUT_FILE)" | tee -a "$LOG"
 
 # 3) needle-факт доехал до ответа модели
-if ! strings -a "$SESSION_FOUND_IN" 2>/dev/null | grep -q "$NEEDLE"; then
+if ! strings -a "$SESSION_FOUND_IN" "$SESSION_FOUND_IN-wal" 2>/dev/null | grep -q "$NEEDLE"; then
   fail "needle-факт $NEEDLE не найден в сессии — ретрив не сработал"
 fi
 echo "check: needle retrieved — ok ($NEEDLE)" | tee -a "$LOG"
