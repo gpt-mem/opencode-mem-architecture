@@ -312,3 +312,40 @@
 - Сделать формулировку хода T1 «выведи результат как есть» совместимой с ужатием (либо явно проверять дословность полного вывода) — контекст: при ужатии модель отвечает усечённым фрагментом, сценарий «как есть» не исполнен
 
 (Только констатация фактов из лога 16:42, смежных логов за 20 октября, исходников форка и скриптов прогона; решения не предлагались.)
+
+## BUG-REPORT 20261020-191311
+
+Источник: `~/.opencode/scripts/selftest-logs/selftest-20261020-191311.log` (1 314 байт / 14 строк — наибольший по mtime), контекст: `~/.local/share/opencode/log/opencode.log` (строки 86610–86617), общая БД `~/.local/share/opencode/opencode.db`, `release-current.md` (16:47), `selftest-last.json`, `candidate-current.json`, `run-selftest.sh`, логи 18:38 / 16:42 / 16:35, `packages/core/src/database/migration/20261020143020_volatile_mister_fear.ts`, ITERATIONS (последние 10 записей).
+
+### Проблемы
+- Кандидат `03349ef2b2ed` (PR #179, порт op-memory) не поднимается: миграция `mem_record` падает на уже существующей таблице — лог прогона: «Error: Standalone server exited before reporting readiness» (стр. 7), «--- TURN T1 exit=1» (стр. 13); причина в `opencode.log`: `message="database migration started" migration=20261020143020_volatile_mister_fear role=server` → `level=ERROR … message="cli process failed" cause="Cause([Die(SQLiteError: table \`mem_record\` already exists)])"` (`timestamp=2026-10-20T16:13:14.694Z`) — critical
+- Прогон оборвался на первом ходе, приёмка не получена — «session: NOT-BOUND (sentinel 'ST-20261020-191311' не найден в opencode*.db[-wal]) — оставшиеся ходы пропущены» (стр. 14); в логе нет ни «=== SELFTEST 20261020-191311 DONE ===», ни строки `acceptance:`, ни 4 артефактных check'ов (в логе 18:38 — все на месте) — critical
+- Причина падения в лог прогона не попала — прогон содержит только симптом и стек из `$bunfs/root/chunk-*.js` (стр. 8–12); диагностика лежит в глобальном `~/.local/share/opencode/log/opencode.log` (40 МБ) и была найдена вручную по временной метке — high
+- Состояние приёмки осталось зелёным после провала — `selftest-last.json` не обновлён (mtime 18:40, `sha12: 260abb8810eb`, `"status": "ok"`); провал 19:13 не записан ни в `selftest-last.json`, ни в `candidate-current.json` (в нём только `built_at: 2026-10-20T16:13:11Z`) — high
+- Проверенный кандидат ≠ текущий релиз — «candidate: /Users/vova/.opencode/candidates/03349ef2b2ed/opencode (03349ef2b2ed)» (стр. 2) против «installed binary: opencode v0.0.0-fork-at-260abb8810eb» (стр. 4); `release-current.md` (16:47) описывает `260abb8810eb` — medium
+- Фикстуры прогона не убраны на пути провала — `DOC_DIR` удаляется только в конце успешного пути (`rm -rf "$DOC_DIR"`, `run-selftest.sh:245`), а `fail()` выходит раньше (стр. 42); остался каталог `/var/folders/1m/…/T/tmp.nj6gDeajBa/` с `big.txt` (244 889 Б) и `doc.md` (22 358 Б) от 19:13 — medium
+- Провал не внесён в трекер — `grep "20261020-191311\|03349ef2b2ed"` по `ITERATIONS.md` / `ISSUES.md` / `ROADMAP.md` → 0 совпадений — medium
+- Прочих `FAIL|Error|panic|assert` нет: `grep -cE "FAIL|Error|panic|assert"` по логу → 1, и это сама строка ошибки старта (стр. 7) — critical: 0 дополнительных
+
+Регрессии vs предыдущих циклов: (1) прогон 18:38 (candidate == installed == `260abb8810eb`) — полный: T1–T5 `exit=0`, «=== SELFTEST 20261020-183819 DONE ===», 4/4 check'а ok, строка `acceptance:` есть; прогон 19:13 (candidate `03349ef2b2ed` = tip `main` после PR #179) — падение на T1. Дельта — только смена кандидата: харнесс, общая БД, фикстуры и модель те же. (2) ITERATIONS (последние 10 записей) фиксирует обратное состояние: «build ok (exit=0, 47s, SHA `260abb8810eb`) → selftest **pass** (exit=0, 284s, T1–T5 exit=0, sentinel привязан, 4/4 артефактных check'а ok) → release ok (exit=0, 37s)» и порт описан как слитый («PR #179 смержен squash `03349ef2b2`») — прогон 19:13 опровергает «слито = поднялось». (3) Дефекты ужатия/маркера (дефект `ig-output-line-2975`, отсутствие байтовых замеров) в этом прогоне не проверялись — до T1 дело не дошло.
+
+### Паттерны
+- Миграция не идемпотентна к общей БД: в `opencode.db` таблица `mem_record` уже есть (31 запись, `time_created` 2026-10-14 13:21 … 2026-10-15 06:17, v1-эпоха), в таблице `migration` стоит v1-id `20261011235047_mem_record` (`time_completed` 2026-10-13 19:30:35), а нового id `20261020143020_volatile_mister_fear` там нет; файл новой миграции делает `CREATE TABLE \`mem_record\`` без `IF NOT EXISTS` (`packages/core/src/database/migration/20261020143020_volatile_mister_fear.ts:9`) → каждый старт кандидата на этой машине повторяет `CREATE TABLE` и умирает
+- Плацдарм общий со стоком: «check: data namespace shared with stock — ok (/Users/vova/.local/share/opencode/opencode.db)» (стр. 5) — именно эта БД хранит остатки v1-линии, с которыми конфликтует новая миграция
+- Трекер миграций и репозиторий разошлись: v1-файла миграции в v2-репозитории нет (`ls packages/core/src/database/migration/ | grep -i mem` → 0 совпадений), а его id остался в `migration` общей БД
+- `candidate ≠ installed` в 8 из 10 последних прогонов (совпали только 02:01 и 18:38) — расхождение, заведённое в ROADMAP как (a) low, воспроизводится системно
+- Объём в работе больше слитого: verify-clone HEAD = `03349ef2b2ed`, work-clone HEAD = `2eb7ad4531` «port operational memory store and tools to v2» (не слит) — тестировался меньший объём, чем в работе
+- Артефакты ужатых выводов копятся: `~/.local/share/opencode/shell` — 490 `.out` / 4,5 МиБ против 414 / 2,82 МиБ в BUG-REPORT `20261020-164201` (тот же дефект, рост за цикл)
+- Место на томе есть: `/System/Volumes/Data` — 97%, 6,7 GiB свободно (было 99% / 3,4 GiB в отчёте 164201); падение 19:13 не вызвано заполнением диска
+- PII в логе нет: лог содержит только пути с домашним каталогом (`/Users/vova/…`), sentinel `ST-20261020-191311` и SHA — совпадений e-mail/token/phone
+
+### Идеи (as is)
+- Складывать в лог прогона причину падения старта (хвост серверного лога / stderr) — контекст: `SQLiteError: table mem_record already exists` нашлась только вручную в `opencode.log` по метке времени
+- Писать в `selftest-last.json` и провал (sha, sentinel, код выхода, причина), а не только успех — контекст: после провала файл остался с `"status": "ok"` за 18:40
+- Развести «миграция выполнена» и «таблица уже есть»: проверять наличие объекта перед `CREATE TABLE` — контекст: `mem_record` в общей БД с v1-эпохи, новая миграция создаёт безусловно
+- Убирать фикстуры на любом выходе (cleanup в `fail`/`skip`) — контекст: 4 оставшихся tmp-каталога с `big.txt`/`doc.md` (960 КБ суммарно), один — от провалившегося прогона 19:13
+- Вносить провал прогона в ISSUES/ITERATIONS с SHA кандидата — контекст: ST-20261020-191311 не упомянут ни в одном файле трекера
+- Добавить гейт «candidate == installed» и помечать расхождение в логе — контекст: 8 из 10 прогонов; `release-current.md` описывает не тот SHA, что проверялся
+- Чистить `~/.local/share/opencode/shell/**/*.out` по лимиту/возрасту — контекст: 490 файлов / 4,5 МиБ
+
+(Только констатация фактов из лога 19:13, `opencode.log`, общей БД, смежных логов и исходников форка; решения не предлагались.)
