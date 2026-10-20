@@ -3,7 +3,7 @@
 
   "upstream_repo": "anomalyco/opencode",
   "fork_repo": "gpt-mem/opencode-mem",
-  "fork_branch": "v2-base",
+  "fork_branch": "main",
   "tag_prefix": "v2.",
 
   "product": {
