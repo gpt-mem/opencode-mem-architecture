@@ -130,15 +130,10 @@ jobs:
       - name: Clone the fork
         run: git clone --depth 1 --branch "$FORK_BRANCH" "https://github.com/$FORK_REPO.git" fork
 
-      - name: Setup Bun (fork action with baseline)
-        run: |
-          # Форковый setup-bun требует package.json в cwd — он в подпапке fork/.
-          # Нужны baseline-бинарники (ubuntu-latest без AVX) и cross-архитектурные
-          # нативные пакеты для компиляции под linux-x64.
-          bun --version
-          cd fork
-          bun install --frozen-lockfile --os=* --cpu=*
-        shell: bash
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.2"
 
       - name: Restore the built binary
         uses: actions/cache@v4
@@ -228,15 +223,10 @@ jobs:
       - name: Clone the fork
         run: git clone --depth 1 --branch "$FORK_BRANCH" "https://github.com/$FORK_REPO.git" fork
 
-      - name: Setup Bun (fork action with baseline)
-        run: |
-          # Форковый setup-bun требует package.json в cwd — он в подпапке fork/.
-          # Нужны baseline-бинарники (ubuntu-latest без AVX) и cross-архитектурные
-          # нативные пакеты для компиляции под linux-x64.
-          bun --version
-          cd fork
-          bun install --frozen-lockfile --os=* --cpu=*
-        shell: bash
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.2"
 
       - name: Restore the built binary
         uses: actions/cache@v4
