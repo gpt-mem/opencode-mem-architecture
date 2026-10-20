@@ -1,0 +1,283 @@
+name: upstream-watch
+
+# Регулярный дозор за апстримом: внутри крутится НАШ opencode (форк gpt-mem/opencode-mem),
+# он изучает новый релиз апстрима и собирает годное в форк.
+#
+# Шаги:
+#   collect — дешёвый детектор (без модели): есть ли новый тег апстрима;
+#             если новых релизов нет — модель не запускается, токены не тратятся.
+#   study   — opencode-сессия «изучить»: разбор диапазона по профилю продукта,
+#             отчёт и issue в форке gpt-mem/opencode-mem.
+#   port    — opencode-сессия «собрать»: перенос PORT-изменений на v2-base,
+#             проверка профиля, черновик PR (merge — за человеком).
+#
+# Секреты репозитория (gpt-mem/opencode-mem-architecture):
+#   GH_PAT          — classic PAT: чтение форка, запись issue/PR, push веток;
+#   LLM_LADDER_TOKEN — ключ провайдера ladder для opencode-сессий.
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Тег апстрима для разбора (пусто = взять последний новый)"
+        required: false
+        type: string
+      do_port:
+        description: "Готовить PR порта после разбора"
+        required: false
+        default: "true"
+        type: boolean
+      dry_run:
+        description: "Сухой режим: без записи в GitHub"
+        required: false
+        default: "false"
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: upstream-watch
+  cancel-in-progress: false
+
+env:
+  FORK_REPO: gpt-mem/opencode-mem
+  FORK_BRANCH: v2-base
+  UPSTREAM_REPO: anomalyco/opencode
+  ARCH_REPO: gpt-mem/opencode-mem-architecture
+
+jobs:
+  collect:
+    name: Detect a new upstream release
+    runs-on: ubuntu-latest
+    outputs:
+      status: ${{ steps.detect.outputs.status }}
+      tags: ${{ steps.detect.outputs.tags }}
+      tag: ${{ steps.detect.outputs.tag }}
+      collected: ${{ steps.detect.outputs.collected }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: arch
+
+      - name: Set up GitHub token
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then echo "::error::нет секрета GH_PAT"; exit 1; fi
+
+      - name: Detect
+        id: detect
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          UPSTREAM_BASE_TAG: ${{ inputs.tag }}
+          UPSTREAM_POLICY: "${{ github.workspace }}/arch/chain/upstream-policy.json"
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.opencode/scripts/upstream-watch"
+          python3 arch/chain/upstream_collect.py | tee "$HOME/.opencode/scripts/upstream-watch/collect.out"
+          STATUS=$(grep -m1 '^STATUS=' "$HOME/.opencode/scripts/upstream-watch/collect.out" | cut -d= -f2- || true)
+          TAGS=$(grep -m1 '^NEW_TAGS=' "$HOME/.opencode/scripts/upstream-watch/collect.out" | cut -d= -f2- || true)
+          COLLECTED=$(grep -m1 '^COLLECTED=' "$HOME/.opencode/scripts/upstream-watch/collect.out" | cut -d= -f2- || true)
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+          echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
+          echo "tag=$(echo "$TAGS" | tr ',' '\n' | tail -1)" >> "$GITHUB_OUTPUT"
+          echo "collected=$COLLECTED" >> "$GITHUB_OUTPUT"
+
+      - name: Archive the collected raw data
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: upstream-collected
+          path: |
+            ~/.opencode/scripts/upstream-watch/collected/*.json
+            ~/.opencode/scripts/upstream-watch/state.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  study:
+    name: Study the upstream release (opencode)
+    needs: collect
+    if: needs.collect.outputs.status == 'collected'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ secrets.GH_PAT }}
+      LLM_LADDER_TOKEN: ${{ secrets.LLM_LADDER_TOKEN }}
+      UPSTREAM_TAG: ${{ needs.collect.outputs.tag }}
+      UPSTREAM_COLLECTED: ${{ needs.collect.outputs.collected }}
+      UPSTREAM_POLICY: ${{ github.workspace }}/arch/chain/upstream-policy.json
+      UPSTREAM_OUT_DIR: ${{ github.workspace }}/out
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: arch
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.2"
+
+      - name: Build our opencode (fork) for linux-x64
+        id: build
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch "$FORK_BRANCH" "https://github.com/$FORK_REPO.git" fork
+          cd fork
+          git rev-parse HEAD | tee "$GITHUB_OUTPUT" > /dev/null
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          bun install --frozen-lockfile || bun install
+          cd packages/cli
+          bun run script/build.ts --single --skip-install --skip-web-ui
+          find dist -name opencode -type f | head -1
+
+      - name: Cache the built binary
+        uses: actions/cache@v4
+        with:
+          path: fork/packages/cli/dist
+          key: opencode-fork-${{ env.FORK_BRANCH }}-${{ steps.build.outputs.sha }}
+
+      - name: Configure opencode
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.config/opencode"
+          cat > "$HOME/.config/opencode/opencode.json" <<JSON
+          {
+            "\$schema": "https://opencode.ai/config.json",
+            "model": "ladder/build",
+            "provider": {
+              "ladder": {
+                "npm": "@ai-sdk/openai-compatible",
+                "name": "trained-assist-llm-ladder",
+                "options": {
+                  "baseURL": "https://llm-ladder.trainedassist.store/v1",
+                  "apiKey": "{env:LLM_LADDER_TOKEN}"
+                },
+                "models": { "build": { "name": "ladder build" } }
+              }
+            }
+          }
+          JSON
+          chmod 600 "$HOME/.config/opencode/opencode.json"
+
+      - name: Run the study session
+        id: study
+        run: |
+          set -euo pipefail
+          mkdir -p "$UPSTREAM_OUT_DIR"
+          BIN=$(find fork/packages/cli/dist -name opencode -type f | head -1)
+          chmod +x "$BIN"
+          "$BIN" run --standalone --model ladder/build --auto \
+            "$(cat arch/chain/prompt-upstream-study.txt)" 2>&1 | tee "$UPSTREAM_OUT_DIR/study.log"
+          grep -E '^(TAG|ISSUE|REPORT)=' "$UPSTREAM_OUT_DIR/study.log" > "$UPSTREAM_OUT_DIR/study.out" || true
+          cat "$UPSTREAM_OUT_DIR/study.out"
+
+      - name: Publish the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: upstream-report
+          path: |
+            out/report-*.md
+            out/study.log
+            out/study.out
+          if-no-files-found: warn
+          retention-days: 30
+
+  port:
+    name: Assemble the port (opencode)
+    needs: [collect, study]
+    if: needs.collect.outputs.status == 'collected' && needs.study.result == 'success' && (inputs.do_port != false)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ secrets.GH_PAT }}
+      LLM_LADDER_TOKEN: ${{ secrets.LLM_LADDER_TOKEN }}
+      UPSTREAM_TAG: ${{ needs.collect.outputs.tag }}
+      UPSTREAM_COLLECTED: ${{ needs.collect.outputs.collected }}
+      UPSTREAM_POLICY: ${{ github.workspace }}/arch/chain/upstream-policy.json
+      UPSTREAM_OUT_DIR: ${{ github.workspace }}/out
+      UPSTREAM_REPORT: ${{ github.workspace }}/out/report-${{ needs.collect.outputs.tag }}.md
+      UPSTREAM_ISSUE: ${{ needs.study.outputs.issue }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: arch
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.2"
+
+      - name: Build our opencode (fork) for linux-x64
+        id: build
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch "$FORK_BRANCH" "https://github.com/$FORK_REPO.git" fork
+          cd fork
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          bun install --frozen-lockfile || bun install
+          cd packages/cli
+          bun run script/build.ts --single --skip-install --skip-web-ui
+
+      - name: Cache the built binary
+        uses: actions/cache@v4
+        with:
+          path: fork/packages/cli/dist
+          key: opencode-fork-${{ env.FORK_BRANCH }}-${{ steps.build.outputs.sha }}
+
+      - name: Configure opencode
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.config/opencode"
+          cat > "$HOME/.config/opencode/opencode.json" <<JSON
+          {
+            "\$schema": "https://opencode.ai/config.json",
+            "model": "ladder/build",
+            "provider": {
+              "ladder": {
+                "npm": "@ai-sdk/openai-compatible",
+                "name": "trained-assist-llm-ladder",
+                "options": {
+                  "baseURL": "https://llm-ladder.trainedassist.store/v1",
+                  "apiKey": "{env:LLM_LADDER_TOKEN}"
+                },
+                "models": { "build": { "name": "ladder build" } }
+              }
+            }
+          }
+          JSON
+          chmod 600 "$HOME/.config/opencode/opencode.json"
+
+      - name: Run the port session
+        id: port
+        run: |
+          set -euo pipefail
+          mkdir -p "$UPSTREAM_OUT_DIR"
+          BIN=$(find fork/packages/cli/dist -name opencode -type f | head -1)
+          chmod +x "$BIN"
+          "$BIN" run --standalone --model ladder/build --auto \
+            "$(cat arch/chain/prompt-upstream-port.txt)" 2>&1 | tee "$UPSTREAM_OUT_DIR/port.log"
+          grep -E '^(TAG|PR|BRANCH|RESULT)=' "$UPSTREAM_OUT_DIR/port.log" > "$UPSTREAM_OUT_DIR/port.out" || true
+          cat "$UPSTREAM_OUT_DIR/port.out"
+
+      - name: Publish the port artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: upstream-port
+          path: |
+            out/port.log
+            out/port.out
+            out/port-conflicts-*.md
+            out/report-*.md
+          if-no-files-found: warn
+          retention-days: 30

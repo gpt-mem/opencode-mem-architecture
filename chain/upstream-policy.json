@@ -1,0 +1,89 @@
+{
+  "$comment": "Профиль продукта форка gpt-mem/opencode-mem: что дозор по апстриму считает своим, что чужим, а что требует решения человека. Правь только этот файл — скрипты читают его.",
+
+  "upstream_repo": "anomalyco/opencode",
+  "fork_repo": "gpt-mem/opencode-mem",
+  "fork_branch": "v2-base",
+  "tag_prefix": "v2.",
+
+  "product": {
+    "summary": "Чисто терминальный агент: без нативного приложения и без веба. Экономия токенов: усечение вывода инструментов + компактификация сессии.",
+    "keeps": [
+      "терминальный агент (packages/tui, packages/cli, packages/core) — единственный интерфейс",
+      "экономия токенов: усечение вывода инструментов (packages/core/src/tool-output.ts) и компактификация сессии",
+      "наши фишки: детектор doom-loop, свой cross-spawn spawner, миграция БД без леджера масок",
+      "Codemode, Ladder-провайдер, общая база сессий со стоком"
+    ],
+    "excludes": [
+      "нативное приложение (packages/app, packages/desktop) и его пайплайны публикации",
+      "веб (packages/web, packages/session-ui, packages/gui-extensions) и сайты/статистика",
+      "деплойные и публикационные workflow апстрима"
+    ]
+  },
+
+  "skip_paths": [
+    "packages/app/",
+    "packages/desktop/",
+    "packages/web/",
+    "packages/session-ui/",
+    "packages/gui-extensions/",
+    "packages/console/",
+    "packages/stats/",
+    "packages/posts/",
+    "packages/function/",
+    ".github/workflows/deploy",
+    ".github/workflows/publish",
+    ".github/workflows/release-github-action",
+    ".github/workflows/docs",
+    ".github/workflows/storybook",
+    ".github/workflows/stats",
+    ".github/workflows/notify-discord",
+    ".github/workflows/triage",
+    "docs/"
+  ],
+
+  "skip_message_patterns": [
+    "^chore\\(release\\)",
+    "^chore: bump",
+    "^chore\\(i18n\\)",
+    "^chore\\(deps\\)",
+    "^chore: update lockfile",
+    "^\\[skip ci\\]"
+  ],
+
+  "port_scopes": [
+    "core",
+    "tui",
+    "cli",
+    "server",
+    "sdk",
+    "plugin",
+    "util",
+    "schema",
+    "protocol",
+    "codemode",
+    "effect-drizzle-sqlite",
+    "identity",
+    "simulation",
+    "http-recorder",
+    "containers"
+  ],
+
+  "must_keep": [
+    "packages/core/src/tool-output.ts",
+    "packages/core/src/shell.ts",
+    "packages/core/src/session/runner/doom-loop.ts",
+    "packages/core/src/database/migration/20261019172723_colossal_sue_storm.ts",
+    "packages/util/src/cross-spawn-spawner.ts",
+    "packages/core/test/doom-loop.test.ts"
+  ],
+
+  "must_not_return": [
+    "packages/core/src/session/cache-mask.ts",
+    "packages/core/src/session/cache-mark.ts"
+  ],
+
+  "issue_labels": [],
+  "max_prs_to_fetch": 60,
+  "max_commits_to_classify": 200
+}
