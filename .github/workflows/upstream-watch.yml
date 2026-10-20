@@ -123,17 +123,17 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Setup Bun (fork action with baseline)
-        uses: ./fork/.github/actions/setup-bun
-        with:
-          bun-version: "1.4.2"
-
       - name: Resolve the fork revision
         id: rev
         run: echo "sha=$(git ls-remote \"https://github.com/$FORK_REPO.git\" \"refs/heads/$FORK_BRANCH\" | cut -f1)" >> "$GITHUB_OUTPUT"
 
       - name: Clone the fork
         run: git clone --depth 1 --branch "$FORK_BRANCH" "https://github.com/$FORK_REPO.git" fork
+
+      - name: Setup Bun (fork action with baseline)
+        uses: ./fork/.github/actions/setup-bun
+        with:
+          bun-version: "1.4.2"
 
       - name: Restore the built binary
         uses: actions/cache@v4
@@ -216,17 +216,17 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Setup Bun (fork action with baseline)
-        uses: ./fork/.github/actions/setup-bun
-        with:
-          bun-version: "1.4.2"
-
       - name: Resolve the fork revision
         id: rev
         run: echo "sha=$(git ls-remote \"https://github.com/$FORK_REPO.git\" \"refs/heads/$FORK_BRANCH\" | cut -f1)" >> "$GITHUB_OUTPUT"
 
       - name: Clone the fork
         run: git clone --depth 1 --branch "$FORK_BRANCH" "https://github.com/$FORK_REPO.git" fork
+
+      - name: Setup Bun (fork action with baseline)
+        uses: ./fork/.github/actions/setup-bun
+        with:
+          bun-version: "1.4.2"
 
       - name: Restore the built binary
         uses: actions/cache@v4
