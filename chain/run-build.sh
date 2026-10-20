@@ -30,6 +30,18 @@ export PATH="$HOME/.local/bun142/bun-darwin-aarch64:$HOME/.bun/bin:/opt/homebrew
 
 echo "=== BUILD $STAMP ===" | tee -a "$LOG"
 
+# --- 0. Пред-провер диска: сборка падает при 100% заполнения тома (cycle 8) ---
+# Полный текст ошибки обрезается до «Error writing standalone module graph: Io»,
+# причина из лога не читается. Проверяем свободное место ДО клона/установки/сборки,
+# чтобы падение было явным и с внятной причиной, а не тихим exit=70.
+AVAIL_KB=$(df -k "$HOME" 2>/dev/null | awk 'NR==2{print $4}')
+MIN_AVAIL_KB=$((5 * 1024 * 1024)) # 5 GiB
+if [ -n "$AVAIL_KB" ] && [ "$AVAIL_KB" -lt "$MIN_AVAIL_KB" ]; then
+  echo "BUILD SKIPPED: мало места на диске ($((AVAIL_KB / 1024 / 1024)) GiB свободно, нужно ≥5 GiB) — сборка упала бы на 'standalone module graph: Io'" | tee -a "$LOG"
+  echo "LOG: $LOG"
+  exit 78 # skip, не падение сборки: промоушен удержится цепочкой
+fi
+
 # --- 1. Изолированный клон на main (самодостаточный) ---
 if [ ! -d "$VERIFY/.git" ]; then
   if [ -d "$FORK/.git" ]; then
