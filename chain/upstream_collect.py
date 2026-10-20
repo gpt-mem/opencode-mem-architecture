@@ -300,6 +300,15 @@ def main() -> int:
         print(f"COLLECTED={tag}|{path}")
 
     state["last_tag"] = sorted(new_tags, key=semver_key)[-1]
+    # База обязана двигаться вместе с обработанными тегами: иначе следующий
+    # прогон возьмёт из кэша старую базу и снова разберёт уже слитый диапазон.
+    if new_tags:
+        newest = sorted(new_tags, key=semver_key)[-1]
+        state["base_tag"] = newest
+        state["base_sha"] = tag_ref_commit(
+            policy["upstream_repo"], tags[newest]["sha"], tags[newest]["type"]
+        )
+        log(f"база сдвинута на {newest} ({state['base_sha'][:12]})")
     save_state(state)
     print("STATUS=collected")
     print("NEW_TAGS=" + ",".join(sorted(new_tags, key=semver_key)))
