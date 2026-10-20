@@ -8,7 +8,7 @@ name: upstream-watch
 #             если новых релизов нет — модель не запускается, токены не тратятся.
 #   study   — opencode-сессия «изучить»: разбор диапазона по профилю продукта,
 #             отчёт и issue в форке gpt-mem/opencode-mem.
-#   port    — opencode-сессия «собрать»: перенос PORT-изменений на v2-base,
+#   port    — opencode-сессия «собрать»: перенос PORT-изменений на main,
 #             проверка профиля, черновик PR (merge — за человеком).
 #
 # Секреты репозитория (gpt-mem/opencode-mem-architecture):
@@ -44,7 +44,7 @@ concurrency:
 
 env:
   FORK_REPO: gpt-mem/opencode-mem
-  FORK_BRANCH: v2-base
+  FORK_BRANCH: main
   UPSTREAM_REPO: anomalyco/opencode
   ARCH_REPO: gpt-mem/opencode-mem-architecture
 

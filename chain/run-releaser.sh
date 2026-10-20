@@ -11,7 +11,7 @@
 
 set -u
 VERIFY=/tmp/opencode-mem-verify
-BRANCH=v2-base
+BRANCH=main
 REPO=gpt-mem/opencode-mem
 LOG_DIR=~/.opencode/scripts/releaser-logs
 CANDIDATE_STATE=~/.opencode/scripts/candidate-current.json

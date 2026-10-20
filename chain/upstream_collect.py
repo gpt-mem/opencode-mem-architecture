@@ -108,7 +108,7 @@ def save_state(state: dict) -> None:
 def resolve_fork_base(policy: dict, state: dict, tags: dict):
     """
     База форка = самый новый тег апстрима, который форк уже содержит.
-    Проверка: compare <sha>...v2-base в репозитории форка → ahead/identical.
+    Проверка: compare <sha>...main в репозитории форка → ahead/identical.
     """
     fork_repo = policy["fork_repo"]
     branch = policy["fork_branch"]

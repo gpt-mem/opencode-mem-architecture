@@ -3,7 +3,7 @@
 # Запускается launchd local.opencode.mem-chain каждые 2 часа (StartInterval 7200).
 #
 # Системно с описанием релиза апдейта:
-#   - run-build.sh собирает кандидата (v2-base, packages/cli) в стейджинг
+#   - run-build.sh собирает кандидата (main, packages/cli) в стейджинг
 #   - run-selftest.sh проверяет кандидата и пишет отчёт selftest-last.json
 #   - run-releaser.sh публикует релиз и ставит сборку (mem-builds.sh install)
 #   - селфтест логируется, отчёт — в selftest-logs/

@@ -6,7 +6,7 @@
 #
 # Переменные окружения:
 #   FORK_REPO     — репозиторий форка (по умолчанию gpt-mem/opencode-mem)
-#   FORK_BRANCH   — линия форка (по умолчанию v2-base)
+#   FORK_BRANCH   — линия форка (по умолчанию main)
 #   SKIP_INSTALL  — 1: не ставить зависимости (уже стоят)
 #   BUN           — путь к bun (по умолчанию ищем подходящую версию)
 #
@@ -15,7 +15,7 @@
 set -euo pipefail
 
 FORK_REPO="${FORK_REPO:-gpt-mem/opencode-mem}"
-FORK_BRANCH="${FORK_BRANCH:-v2-base}"
+FORK_BRANCH="${FORK_BRANCH:-main}"
 DIR="${1:-fork}"
 # Абсолютный путь: дальше скрипт делает cd "$DIR", и относительный путь
 # превратился бы в fork/fork/... — бинарь находился бы, но не там.

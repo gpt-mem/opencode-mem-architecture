@@ -1,4 +1,4 @@
-Ты — сборщик порта в форке `gpt-mem/opencode-mem` (линия `v2-base`). Задача сессии: взять разобранные изменения апстрима, собрать из них порт, проверить, что наш продукт не пострадал, и открыть PR.
+Ты — сборщик порта в форке `gpt-mem/opencode-mem` (линия `main`). Задача сессии: взять разобранные изменения апстрима, собрать из них порт, проверить, что наш продукт не пострадал, и открыть PR.
 
 ## Вход
 
@@ -28,7 +28,7 @@
 
 ```bash
 cd /tmp && rm -rf opencode-mem-port
-git clone --branch v2-base https://github.com/gpt-mem/opencode-mem.git opencode-mem-port
+git clone --branch main https://github.com/gpt-mem/opencode-mem.git opencode-mem-port
 cd opencode-mem-port
 git remote add upstream https://github.com/anomalyco/opencode.git
 git fetch upstream --tags
@@ -48,7 +48,7 @@ git checkout -b port-v2-0-33
 git cherry-pick -x <sha>
 ```
 
-- Если коммит уже есть в форке (`git merge-base --is-ancestor <sha> v2-base` → успех) — пропусти его, это не ошибка.
+- Если коммит уже есть в форке (`git merge-base --is-ancestor <sha> main` → успех) — пропусти его, это не ошибка.
 - Если коммит-merge (несколько родителей) — `git cherry-pick -x -m 1 <sha>`.
 - **Конфликт — это не «пропустить и пойти дальше» молча.** При конфликте: `git cherry-pick --abort`,
   запиши коммит в `$UPSTREAM_OUT_DIR/port-conflicts-<tag>.md` (какой коммит, какие файлы, в чём суть
@@ -81,7 +81,7 @@ cd /tmp/opencode-mem-port/packages/core && bun install && bun run typecheck
 
 ### 6. Открыть PR
 
-- база: `v2-base`; ветка: своя (`port-...`);
+- база: `main`; ветка: своя (`port-...`);
 - заголовок: `chore(port): <tag> upstream` — формат `type(scope): summary`, type из списка `feat|fix|docs|chore|refactor|test`;
 - тело — **строго по шаблону** `.github/pull_request_template.md` форка, иначе CI ставит `needs:compliance` и закрывает PR через 72 часа. Секции и требования:
   - `### Issue for this PR` — сослаться на issue разбора (`Refs #<номер>`; **не** писать `Closes` — на этой линии closing-ключевые слова не применяются, закрывают вручную);
@@ -110,7 +110,7 @@ RESULT=pr_opened | conflicts | nothing_to_port
 
 ## Ограничения
 
-- Не мержить PR. Не менять `v2-base`. Не трогать другие ветки форка.
+- Не мержить PR. Не менять `main`. Не трогать другие ветки форка.
 - Не публиковать релиз форка и не подменять установленную сборку.
 - Секреты не выводить, `GH_TOKEN` не печатать.
 - Не выдумывать результат: нет PR — значит `RESULT=conflicts` или `nothing_to_port`, и честное объяснение почему.
