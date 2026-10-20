@@ -127,24 +127,21 @@ jobs:
         with:
           bun-version: "1.4.2"
 
-      - name: Build our opencode (fork) for linux-x64
-        id: build
-        run: |
-          set -euo pipefail
-          git clone --depth 1 --branch "$FORK_BRANCH" "https://github.com/$FORK_REPO.git" fork
-          cd fork
-          git rev-parse HEAD | tee "$GITHUB_OUTPUT" > /dev/null
-          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          bun install --frozen-lockfile || bun install
-          cd packages/cli
-          bun run script/build.ts --single --skip-install --skip-web-ui
-          find dist -name opencode -type f | head -1
+      - name: Resolve the fork revision
+        id: rev
+        run: echo "sha=$(git ls-remote \"https://github.com/$FORK_REPO.git\" \"refs/heads/$FORK_BRANCH\" | cut -f1)" >> "$GITHUB_OUTPUT"
 
-      - name: Cache the built binary
+      - name: Clone the fork
+        run: git clone --depth 1 --branch "$FORK_BRANCH" "https://github.com/$FORK_REPO.git" fork
+
+      - name: Restore the built binary
         uses: actions/cache@v4
         with:
           path: fork/packages/cli/dist
-          key: opencode-fork-${{ env.FORK_BRANCH }}-${{ steps.build.outputs.sha }}
+          key: opencode-fork-${{ env.FORK_BRANCH }}-${{ steps.rev.outputs.sha }}
+
+      - name: Build our opencode (fork) for linux-x64
+        run: bash arch/chain/build-fork-cli.sh fork
 
       - name: Configure opencode
         run: |
@@ -222,22 +219,21 @@ jobs:
         with:
           bun-version: "1.4.2"
 
-      - name: Build our opencode (fork) for linux-x64
-        id: build
-        run: |
-          set -euo pipefail
-          git clone --depth 1 --branch "$FORK_BRANCH" "https://github.com/$FORK_REPO.git" fork
-          cd fork
-          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          bun install --frozen-lockfile || bun install
-          cd packages/cli
-          bun run script/build.ts --single --skip-install --skip-web-ui
+      - name: Resolve the fork revision
+        id: rev
+        run: echo "sha=$(git ls-remote \"https://github.com/$FORK_REPO.git\" \"refs/heads/$FORK_BRANCH\" | cut -f1)" >> "$GITHUB_OUTPUT"
 
-      - name: Cache the built binary
+      - name: Clone the fork
+        run: git clone --depth 1 --branch "$FORK_BRANCH" "https://github.com/$FORK_REPO.git" fork
+
+      - name: Restore the built binary
         uses: actions/cache@v4
         with:
           path: fork/packages/cli/dist
-          key: opencode-fork-${{ env.FORK_BRANCH }}-${{ steps.build.outputs.sha }}
+          key: opencode-fork-${{ env.FORK_BRANCH }}-${{ steps.rev.outputs.sha }}
+
+      - name: Build our opencode (fork) for linux-x64
+        run: bash arch/chain/build-fork-cli.sh fork
 
       - name: Configure opencode
         run: |
