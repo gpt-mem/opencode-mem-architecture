@@ -193,10 +193,16 @@ jobs:
           mkdir -p "$UPSTREAM_OUT_DIR"
           BIN=$(find fork/packages/cli/dist -name opencode -type f | head -1)
           chmod +x "$BIN"
+          # Код возврата opencode не эталон: сессия может пережить сбой провайдера
+          # и всё равно сделать работу. Эталон — артефакты на выходе.
           "$BIN" run --standalone --model ladder/build --auto \
-            "$(cat arch/chain/prompt-upstream-study.txt)" 2>&1 | tee "$UPSTREAM_OUT_DIR/study.log"
+            "$(cat arch/chain/prompt-upstream-study.txt)" 2>&1 | tee "$UPSTREAM_OUT_DIR/study.log" || true
           grep -E '^(TAG|ISSUE|REPORT)=' "$UPSTREAM_OUT_DIR/study.log" > "$UPSTREAM_OUT_DIR/study.out" || true
           cat "$UPSTREAM_OUT_DIR/study.out"
+          if ! grep -q '^REPORT=' "$UPSTREAM_OUT_DIR/study.out"; then
+            echo "::error::сессия разбора не выдала REPORT= — разбор не состоялся"
+            exit 1
+          fi
 
       - name: Publish the report
         if: always()
@@ -305,10 +311,15 @@ jobs:
           mkdir -p "$UPSTREAM_OUT_DIR"
           BIN=$(find fork/packages/cli/dist -name opencode -type f | head -1)
           chmod +x "$BIN"
+          # Как и в study: код возврата opencode не эталон, эталон — артефакты.
           "$BIN" run --standalone --model ladder/build --auto \
-            "$(cat arch/chain/prompt-upstream-port.txt)" 2>&1 | tee "$UPSTREAM_OUT_DIR/port.log"
+            "$(cat arch/chain/prompt-upstream-port.txt)" 2>&1 | tee "$UPSTREAM_OUT_DIR/port.log" || true
           grep -E '^(TAG|PR|BRANCH|RESULT)=' "$UPSTREAM_OUT_DIR/port.log" > "$UPSTREAM_OUT_DIR/port.out" || true
           cat "$UPSTREAM_OUT_DIR/port.out"
+          if ! grep -q '^RESULT=' "$UPSTREAM_OUT_DIR/port.out"; then
+            echo "::error::сессия сборки не выдала RESULT= — порт не состоялся"
+            exit 1
+          fi
 
       - name: Publish the port artifacts
         if: always()
