@@ -130,6 +130,25 @@ jobs:
       - name: Clone the fork
         run: git clone --depth 1 --branch "$FORK_BRANCH" "https://github.com/$FORK_REPO.git" fork
 
+      - name: Restore the collected raw data
+        uses: actions/download-artifact@v4
+        with:
+          name: upstream-collected
+          path: ${{ runner.temp }}/upstream-collected
+
+      - name: Point the sessions at the collected data
+        run: |
+          set -euo pipefail
+          DIR="${{ runner.temp }}/upstream-collected"
+          FILE=$(find "$DIR" -type f -name "${UPSTREAM_TAG}.json" | head -1)
+          if [ -z "$FILE" ]; then
+            echo "::error::собранное сырьё для $UPSTREAM_TAG не найдено в артефакте upstream-collected"
+            find "$DIR" -type f | head -20 || true
+            exit 1
+          fi
+          echo "UPSTREAM_COLLECTED=$FILE" >> "$GITHUB_ENV"
+          echo "собранное сырьё: $FILE"
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -222,6 +241,25 @@ jobs:
 
       - name: Clone the fork
         run: git clone --depth 1 --branch "$FORK_BRANCH" "https://github.com/$FORK_REPO.git" fork
+
+      - name: Restore the collected raw data
+        uses: actions/download-artifact@v4
+        with:
+          name: upstream-collected
+          path: ${{ runner.temp }}/upstream-collected
+
+      - name: Point the sessions at the collected data
+        run: |
+          set -euo pipefail
+          DIR="${{ runner.temp }}/upstream-collected"
+          FILE=$(find "$DIR" -type f -name "${UPSTREAM_TAG}.json" | head -1)
+          if [ -z "$FILE" ]; then
+            echo "::error::собранное сырьё для $UPSTREAM_TAG не найдено в артефакте upstream-collected"
+            find "$DIR" -type f | head -20 || true
+            exit 1
+          fi
+          echo "UPSTREAM_COLLECTED=$FILE" >> "$GITHUB_ENV"
+          echo "собранное сырьё: $FILE"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
