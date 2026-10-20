@@ -73,6 +73,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
           UPSTREAM_BASE_TAG: ${{ inputs.tag }}
+          UPSTREAM_DRY_RUN: ${{ inputs.dry_run }}
           UPSTREAM_POLICY: "${{ github.workspace }}/arch/chain/upstream-policy.json"
         run: |
           set -euo pipefail
@@ -110,6 +111,7 @@ jobs:
       UPSTREAM_COLLECTED: ${{ needs.collect.outputs.collected }}
       UPSTREAM_POLICY: ${{ github.workspace }}/arch/chain/upstream-policy.json
       UPSTREAM_OUT_DIR: ${{ github.workspace }}/out
+      UPSTREAM_DRY_RUN: ${{ inputs.dry_run }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -202,6 +204,7 @@ jobs:
       UPSTREAM_COLLECTED: ${{ needs.collect.outputs.collected }}
       UPSTREAM_POLICY: ${{ github.workspace }}/arch/chain/upstream-policy.json
       UPSTREAM_OUT_DIR: ${{ github.workspace }}/out
+      UPSTREAM_DRY_RUN: ${{ inputs.dry_run }}
       UPSTREAM_REPORT: ${{ github.workspace }}/out/report-${{ needs.collect.outputs.tag }}.md
       UPSTREAM_ISSUE: ${{ needs.study.outputs.issue }}
     steps:
