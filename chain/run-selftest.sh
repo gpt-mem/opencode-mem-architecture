@@ -20,7 +20,7 @@ set -u
 FORK=/tmp/opencode-mem
 VERIFY=/tmp/opencode-mem-verify
 REPO=https://github.com/gpt-mem/opencode-mem.git
-BRANCH=v2-base
+BRANCH=main
 LOG_DIR=~/.opencode/scripts/selftest-logs
 CANDIDATE_STATE=~/.opencode/scripts/candidate-current.json
 SELFTEST_STATE=~/.opencode/scripts/selftest-last.json
@@ -137,7 +137,7 @@ run_turn() {
 }
 
 # T1 — большой вывод целиком: он не влезает в контекст и уезжает в файл.
-run_turn T1 "$MODEL" "Ты работаешь на форке OpenCode MEM (репо gpt-mem/opencode-mem, линия v2-base). Это self-review сессия. Метка прогона: $SENTINEL. Шаг 1: вызови bash-тул с командой 'cat $BIG_SH' и выведи результат как есть."
+run_turn T1 "$MODEL" "Ты работаешь на форке OpenCode MEM (репо gpt-mem/opencode-mem, линия main). Это self-review сессия. Метка прогона: $SENTINEL. Шаг 1: вызови bash-тул с командой 'cat $BIG_SH' и выведи результат как есть."
 
 # Сессия создана с нашим id; sentinel'а в ней быть должно — иначе первый ход
 # ушёл не туда (чужая база, другой профиль, бинарь не тот).

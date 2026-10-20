@@ -5,7 +5,7 @@
 # устанавливается: активный бинарь не трогается, пока проверка не зелёная.
 # Промоушеном занимается run-releaser.sh (он зовёт mem-builds.sh install).
 #
-# Линия: v2-base (packages/core + packages/cli). Старая v1-раскладка
+# Линия: main (packages/core + packages/cli). Старая v1-раскладка
 # (packages/opencode, ветка memory-context-v1) больше не используется.
 #
 # Артефакты:
@@ -17,7 +17,7 @@ set -u
 FORK=/tmp/opencode-mem
 VERIFY=/tmp/opencode-mem-verify
 REPO=https://github.com/gpt-mem/opencode-mem.git
-BRANCH=v2-base
+BRANCH=main
 LOG_DIR=~/.opencode/scripts/build-logs
 CANDIDATES_DIR=~/.opencode/candidates
 CANDIDATE_STATE=~/.opencode/scripts/candidate-current.json
@@ -30,7 +30,7 @@ export PATH="$HOME/.local/bun142/bun-darwin-aarch64:$HOME/.bun/bin:/opt/homebrew
 
 echo "=== BUILD $STAMP ===" | tee -a "$LOG"
 
-# --- 1. Изолированный клон на v2-base (самодостаточный) ---
+# --- 1. Изолированный клон на main (самодостаточный) ---
 if [ ! -d "$VERIFY/.git" ]; then
   if [ -d "$FORK/.git" ]; then
     git clone --branch "$BRANCH" "file://$FORK" "$VERIFY" >> "$LOG" 2>&1 \
@@ -69,7 +69,7 @@ export OPENCODE_VERSION="0.0.0-fork-at-$SHA12"
 # packages/cli/src/database-path.ts берёт opencode.db только для каналов
 # latest|dev|beta|next|prod, иначе opencode-<канал>.db. Без явного канала
 # скрипт сборки выводит его из имени ветки (packages/script/src/index.ts),
-# и форк уезжал в отдельную базу opencode-v2-base.db: у пользователя исчезали
+# и форк уезжал в отдельную базу opencode-main.db: у пользователя исчезали
 # креды (модель mem-gpt/build отдавала 401 unauthorized) и все 161 сессия.
 # Форк заменяет стоковый бинарь — значит обязан делить с ним базу.
 export OPENCODE_CHANNEL="latest"
