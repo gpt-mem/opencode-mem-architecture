@@ -11,7 +11,8 @@
     "keeps": [
       "терминальный агент (packages/tui, packages/cli, packages/core) — единственный интерфейс",
       "экономия токенов: усечение вывода инструментов (packages/core/src/tool-output.ts) и компактификация сессии",
-      "наши фишки: детектор doom-loop, свой cross-spawn spawner, миграция БД без леджера масок",
+      "наши фишки: детектор doom-loop, свой cross-spawn spawner, миграции БД без леджера масок и идемпотентные",
+      "оперативная память v2: mem_record + put/search/get_operational_memory",
       "Codemode, Ladder-провайдер, общая база сессий со стоком"
     ],
     "excludes": [
@@ -74,8 +75,15 @@
     "packages/core/src/shell.ts",
     "packages/core/src/session/runner/doom-loop.ts",
     "packages/core/src/database/migration/20261019172723_colossal_sue_storm.ts",
+    "packages/core/src/database/migration/20261020143020_volatile_mister_fear.ts",
     "packages/util/src/cross-spawn-spawner.ts",
-    "packages/core/test/doom-loop.test.ts"
+    "packages/core/test/doom-loop.test.ts",
+    "packages/core/src/session/mem-record.sql.ts",
+    "packages/core/src/session/mem-record.ts",
+    "packages/core/src/session/mem-record-store.ts",
+    "packages/core/src/session/pii.ts",
+    "packages/core/src/tool/plugin/operational-memory.ts",
+    "packages/core/test/tool-operational-memory.test.ts"
   ],
 
   "must_not_return": [

@@ -1,6 +1,6 @@
 # OpenCode MEM — Operational Memory Architecture
 
-Status: **v2-линия `main`** (порт апстрима v2.1.0); экономия токенов через штатное v2-усечение вывода тулов + компактификацию. v1-линия `memory-context-v1` архивирована (см. «Чем наш форк отличается…» ниже). Актуально 2026-10-20.
+Status: **v2-линия `main`** (порт апстрима v2.1.0); экономия токенов через штатное v2-усечение вывода тулов + компактификацию; ядро оперативной памяти (mem_record + put/search/get) в `main` с 2026-10-20 (PR #179/#180/#183). v1-линия `memory-context-v1` архивирована (см. «Чем наш форк отличается…» ниже). Актуально 2026-10-20.
 Architecture home: `gpt-mem/opencode-mem-architecture`; implementation: `gpt-mem/opencode-mem`, целевая линия `main` (ранее `v2-base`).
 
 ## 1. Goal and scope
@@ -13,7 +13,7 @@ This product is optimized first for small/cheap coding agents that need straight
 
 Форк `gpt-mem/opencode-mem`, целевая линия — **`main`** (переименована из `v2-base`, PR #169), база — апстрим `anomalyco/opencode` **v2.1.0** (порт PR #171). Старая v1-линия (`memory-context-v1`, `dev`) архивирована как `archive-v1-line`; `packages/opencode` (V1-сессия) удалён — форк теперь чистая v2-раскладка (`packages/core`/`cli`/`tui`/`server`).
 
-Экономия токенов достигается **штатным v2-усечением вывода тулов (2 КиБ / 2000 строк)** + **сессионной компактификацией**, а не отдельным memory-слоем. Operational Memory-слой v1 (проекция `MemoryContext`, тулы discover-слоя, PII-тегирование, intent-tracker, cache-mark/cache-mask ledger) **не перенесён в v2** — `cache-mark.ts`/`cache-mask.ts` внесены в `must_not_return` профиля дозора.
+Экономия токенов достигается **штатным v2-усечением вывода тулов (2 КиБ / 2000 строк)** + **сессионной компактификацией**, а не отдельным memory-слоем. Ядро Operational Memory (write/read/recall: таблица `mem_record`, PII-redaction, store, тулы `put/search/get_operational_memory`) **портировано в v2** (PR #179/#180, слайсы 1–2 из issue #178). Остальной слой v1 (проекция `MemoryContext`, discover-тулы `find_tool_calls`/`get_tool_call_overview`, intent-tracker, cache-mark/cache-mask ledger, `schedule_job`) **не перенесён** — `cache-mark.ts`/`cache-mask.ts` внесены в `must_not_return` профиля дозора.
 
 | Компонент | Что добавлено | Файл в коде | Как включить | Статус |
 |---|---|---|---|---|
@@ -21,6 +21,8 @@ This product is optimized first for small/cheap coding agents that need straight
 | Детектор doom-loop | Advisory-предупреждение, когда последние 4 завершённых tool-call имеют одинаковые tool+input+output: «Doom loop suspected… change the approach». Cross-step (каждый повтор — своё assistant-сообщение). Автостопа нет | `packages/core/src/session/runner/doom-loop.ts`, хук в `packages/core/src/session/runner/llm.ts` | без флага — всегда; порог `THRESHOLD=4` | В `main` (PR #154, squash `02f0d458a244`); тест `packages/core/test/doom-loop.test.ts` |
 | Cross-spawn spawner | Свой спавнер держит broken pipe (EPIPE) от затирания ответа ребёнка — код возврата и stderr ребёнка остаются ответом | `packages/util/src/cross-spawn-spawner.ts` | без флага | В `main` (PR #153, squash `88970e3ae9a3`); тест `packages/core/test/effect/cross-spawn-spawner.test.ts` |
 | Идемпотентная миграция БД | `provider_cache_mark` создаётся через `CREATE TABLE IF NOT EXISTS` — форк не падает на боевой базе, где таблица осталась от удалённого леджера | `packages/core/src/database/migration/20261019172723_colossal_sue_storm.ts` | — (миграция) | В `main` (PR #164, squash `663876427c`); регрессионный тест |
+| Operational Memory (ядро) | Таблица `mem_record` (project-scoped, versioning через `supersedes`, `MAX_CHAIN=10`), модуль PII-redaction, store `writeBatch/search/getWithChain`, тулы `put_in_operational_memory` / `search_operational_memory` / `get_operational_memory` через Plugin API (Location/Permission-scoped). PII-редакция до персиста; `authority=agent` unless `decided_by`; search hint при 0 совпадений | `packages/core/src/session/mem-record.sql.ts`, `mem-record.ts`, `mem-record-store.ts`, `pii.ts`, `packages/core/src/tool/plugin/operational-memory.ts`, регистрация в `packages/core/src/plugin/internal.ts` | без флага — всегда (как core Plugin API) | В `main` (PR #179 слайсы 1–2 `03349ef2b2`, PR #180 слайс 3 `dfde60d61`); тест `packages/core/test/tool-operational-memory.test.ts` (5 кейсов) |
+| Идемпотентная миграция `mem_record` | `CREATE TABLE IF NOT EXISTS` — v1-миграция `20261011235047_mem_record` могла уже создать таблицу в общей базе; форк раньше падал и не открывал её (selftest NOT-BOUND, issue #182) | `packages/core/src/database/migration/20261020143020_volatile_mister_fear.ts` | — (миграция) | В `main` (PR #183, squash `256e068a4d`); CI зелёный на linux+windows |
 | Общая база со стоком | Сборка задаёт `OPENCODE_CHANNEL=latest`, иначе `database-path.ts` берёт `opencode-<канал>.db` и форк открывает пустую параллельную базу | `packages/cli/script/build.ts` + env `OPENCODE_CHANNEL` | env при сборке `OPENCODE_CHANNEL=latest` | В `main` (PR #162, squash `d980227b50`) |
 | README-раздел установки | «OpenCode MEM (this fork)»: релиз/исходники/откат/проверка SHA; помечено, что `npm i -g @opencode/cli` — это upstream | `README.md` | — | В `main` (PR #157, squash `d5ecd5409ff4`) |
 
@@ -28,11 +30,11 @@ This product is optimized first for small/cheap coding agents that need straight
 
 - `packages/tui`, `packages/cli`, `packages/core`, `packages/server` — без нативного приложения (`packages/app`/`desktop`) и без веба.
 - Codemode (`packages/codemode`), Ladder-провайдер, общая база сессий со стоком.
-- Профиль продукта (для дозора по апстриму) — `opencode-mem-architecture/chain/upstream-policy.json`: `must_keep` = `tool-output.ts`, `shell.ts`, `doom-loop.ts`, миграция `colossal_sue_storm`, `cross-spawn-spawner.ts`, `doom-loop.test.ts`; `must_not_return` = `cache-mask.ts`, `cache-mark.ts`.
+- Профиль продукта (для дозора по апстриму) — `opencode-mem-architecture/chain/upstream-policy.json`: `must_keep` = `tool-output.ts`, `shell.ts`, `doom-loop.ts`, миграции `colossal_sue_storm` + `volatile_mister_fear` (mem_record), `cross-spawn-spawner.ts`, `doom-loop.test.ts`, `mem-record.sql.ts`, `mem-record.ts`, `mem-record-store.ts`, `pii.ts`, `tool/plugin/operational-memory.ts`, `tool-operational-memory.test.ts`; `must_not_return` = `cache-mask.ts`, `cache-mark.ts`.
 
-### Что НЕ перенесено из v1 (Operational Memory-слой, удалён)
+### Что НЕ перенесено из v1 (остальной Operational Memory-слой, удалён)
 
-`MemoryContext.project`/`projectV1`, `get_tool_call_overview`/`find_tool_calls`/`get_tool_call_details`/`find_pii`, `PII.tag/redact`, intent-tracker + `OPENCODE_MEMORY_INTENT*`, `cache-mark`/`cache-mask` + `OPENCODE_MEMORY_CACHE_MARK`, first-delivery, reasoning-компакция, `schedule_job`, run-id-заголовок (`x-opencode-run-id`). Все 16 env-флагов `OPENCODE_MEMORY_*` из v1 в v2 не читаются.
+`MemoryContext.project`/`projectV1` (проекция контекста), discover-тулы `get_tool_call_overview`/`find_tool_calls`/`get_tool_call_details`/`find_pii`, intent-tracker + `OPENCODE_MEMORY_INTENT*`, cache-mark/cache-mask + `OPENCODE_MEMORY_CACHE_MARK`, first-delivery, reasoning-компакция, `schedule_job`, run-id-заголовок (`x-opencode-run-id`). Все 16 env-флагов `OPENCODE_MEMORY_*` из v1 в v2 не читаются. Портированы в v2 (PR #179/#180): `pii.ts`, `mem-record.ts`, `mem-record-store.ts`, тулы put/search/get_operational_memory, таблица `mem_record`.
 
 Дозор за апстримом — `upstream-watch` (GHA, cron `17 */6 * * *`) + `upstream-policy.json` (классы PORT/ASK/SKIP); merge порта — за человеком. История v1-линии (48 коммитов `memory-context-v1`, PR #1–#72) — в git-истории форка и в `ITERATIONS.md`.
 
