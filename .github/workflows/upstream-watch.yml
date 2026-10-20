@@ -272,6 +272,13 @@ jobs:
         with:
           bun-version: "1.4.2"
 
+      - name: Restore the study report
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: upstream-report
+          path: ${{ github.workspace }}/out
+
       - name: Restore the built binary
         uses: actions/cache@v4
         with:
