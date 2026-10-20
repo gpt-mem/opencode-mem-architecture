@@ -297,7 +297,7 @@ def main() -> int:
             state["tags"][tag].pop("collected", None)
             state["tags"][tag].pop("collected_at", None)
             log(f"{tag}: сухой режим — тег не помечен обработанным")
-        print(f"COLLECTED={path}")
+        print(f"COLLECTED={tag}|{path}")
 
     state["last_tag"] = sorted(new_tags, key=semver_key)[-1]
     save_state(state)
