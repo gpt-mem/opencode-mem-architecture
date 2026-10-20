@@ -17,6 +17,10 @@ set -euo pipefail
 FORK_REPO="${FORK_REPO:-gpt-mem/opencode-mem}"
 FORK_BRANCH="${FORK_BRANCH:-v2-base}"
 DIR="${1:-fork}"
+# Абсолютный путь: дальше скрипт делает cd "$DIR", и относительный путь
+# превратился бы в fork/fork/... — бинарь находился бы, но не там.
+mkdir -p "$DIR"
+DIR="$(cd "$DIR" && pwd)"
 
 log() { echo "[build-fork-cli] $*"; }
 
@@ -79,6 +83,13 @@ if [ "${SKIP_INSTALL:-0}" != "1" ]; then
 fi
 
 log "собираю CLI"
+# BUN_COMPILE_RELEASE обязателен: без него compileExecutable() в build.ts
+# возвращает undefined, и Bun.build({compile}) не получает рантайм-бинарник
+# под target — сборка молча не создаёт исполняемый файл. Форк выставляет
+# его так же в .github/workflows/publish.yml.
+# Релиз bun для компиляции: берём ту же версию, что и сам bun, но только если
+# такой релиз есть. Для 1.4.2/1.4.3 это bun-v1.4.2 / bun-v1.4.3.
+export BUN_COMPILE_RELEASE="${BUN_COMPILE_RELEASE:-bun-v$BUN_VERSION}"
 ( cd packages/cli && "$BUN_BIN" run script/build.ts --single --skip-install --skip-web-ui )
 
 BIN=$(find_bin || true)
