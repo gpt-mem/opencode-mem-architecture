@@ -292,6 +292,11 @@ def main() -> int:
         )
         state.setdefault("tags", {}).setdefault(tag, {})
         state["tags"][tag].update({"sha": sha, "collected": path, "collected_at": data["collected_at"]})
+        if os.environ.get("UPSTREAM_DRY_RUN") == "1":
+            # Сухой прогон: тег не помечаем обработанным, иначе дозор его пропустит.
+            state["tags"][tag].pop("collected", None)
+            state["tags"][tag].pop("collected_at", None)
+            log(f"{tag}: сухой режим — тег не помечен обработанным")
         print(f"COLLECTED={path}")
 
     state["last_tag"] = sorted(new_tags, key=semver_key)[-1]
