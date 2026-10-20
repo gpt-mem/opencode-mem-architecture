@@ -68,6 +68,36 @@ jobs:
         run: |
           if [ -z "$GH_TOKEN" ]; then echo "::error::нет секрета GH_PAT"; exit 1; fi
 
+      - name: Restore the watch state
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # Состояние дозора живёт в HOME раннера, а раннер эфемерный: без
+          # восстановления каждый прогон заново «находил» один и тот же релиз
+          # и зря запускал разбор. Берём state.json из артефакта прошлого прогона.
+          STATE_DIR="$HOME/.opencode/scripts/upstream-watch"
+          mkdir -p "$STATE_DIR"
+          RUN_IDS=$(gh api "repos/$REPO/actions/workflows/upstream-watch.yml/runs?per_page=6" \
+            --jq "[.workflow_runs[] | select(.id != ${GITHUB_RUN_ID}) | .id] | .[]" || echo "")
+          if [ -z "$RUN_IDS" ]; then
+            echo "прошлых прогонов нет — состояние дозора с нуля"
+            exit 0
+          fi
+          for RUN_ID in $RUN_IDS; do
+            ART_ID=$(gh api "repos/$REPO/actions/runs/$RUN_ID/artifacts" \
+              --jq '.artifacts[] | select(.name == "upstream-collected") | .id' | head -1)
+            [ -n "$ART_ID" ] || continue
+            gh api "repos/$REPO/actions/artifacts/$ART_ID/zip" > /tmp/upstream-state.zip
+            unzip -o -q /tmp/upstream-state.zip -d "$STATE_DIR"
+            if [ -f "$STATE_DIR/state.json" ]; then
+              echo "состояние дозора восстановлено из прогона $RUN_ID"
+              exit 0
+            fi
+          done
+          echo "в последних прогонах нет состояния дозора — начинаем с нуля"
+
       - name: Detect
         id: detect
         env:
