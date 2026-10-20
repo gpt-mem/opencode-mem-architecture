@@ -81,10 +81,12 @@ jobs:
           python3 arch/chain/upstream_collect.py | tee "$HOME/.opencode/scripts/upstream-watch/collect.out"
           STATUS=$(grep -m1 '^STATUS=' "$HOME/.opencode/scripts/upstream-watch/collect.out" | cut -d= -f2- || true)
           TAGS=$(grep -m1 '^NEW_TAGS=' "$HOME/.opencode/scripts/upstream-watch/collect.out" | cut -d= -f2- || true)
-          COLLECTED=$(grep -m1 '^COLLECTED=' "$HOME/.opencode/scripts/upstream-watch/collect.out" | cut -d= -f2- || true)
+          TAG=$(echo "$TAGS" | tr ',' '\n' | tail -1)
+          COLLECTED=$(grep "^COLLECTED=$TAG|" "$HOME/.opencode/scripts/upstream-watch/collect.out" | head -1 | cut -d'|' -f2- || true)
+          [ -n "$COLLECTED" ] || COLLECTED=$(grep -m1 '^COLLECTED=' "$HOME/.opencode/scripts/upstream-watch/collect.out" | cut -d'|' -f2- || true)
           echo "status=$STATUS" >> "$GITHUB_OUTPUT"
           echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
-          echo "tag=$(echo "$TAGS" | tr ',' '\n' | tail -1)" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "collected=$COLLECTED" >> "$GITHUB_OUTPUT"
 
       - name: Archive the collected raw data
