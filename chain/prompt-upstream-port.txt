@@ -12,7 +12,7 @@
 
 Если `UPSTREAM_DRY_RUN=1` — **ничего не пиши в GitHub**: ветку не пушь, PR не открывай. Всё равно собери порт локально, проверь профиль и опиши результат в `$UPSTREAM_OUT_DIR/port-dry-run-<tag>.md`, выведи `PR=0` и `RESULT=dry_run`.
 
-Если `$UPSTREAM_COLLECTED` нет или в нём нет `commits` — остановись: «НЕТ СЫРЬЯ».
+Если `$UPSTREAM_COLLECTED` нет или в нём нет `commits` — остановись: «НЕТ СЫРЬЯ». Детектор сам не запускай — сырьё готовит этап collect; выведи `TAG=$UPSTREAM_TAG`, `PR=0`, `BRANCH=`, `RESULT=nothing_to_port` и закончи.
 
 ## Что нужно сделать
 
