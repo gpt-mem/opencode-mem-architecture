@@ -79,22 +79,24 @@ fi
 cd "$DIR"
 if [ "${SKIP_INSTALL:-0}" != "1" ]; then
   log "ставлю зависимости"
-  "$BUN_BIN" install --frozen-lockfile || "$BUN_BIN" install
+  # --os/--cpu нужны: build.ts вшивает в бинарь нативные пакеты под target
+  # (@opencode-ai/pty-linux-x64-gnu, @opentui/core, @parcel/watcher-*).
+  # Обычная установка ставит только варианты текущей платформы.
+  "$BUN_BIN" install --frozen-lockfile --os="*" --cpu="*" ||
+    "$BUN_BIN" install --os="*" --cpu="*"
 fi
 
 log "собираю CLI"
-# BUN_COMPILE_RELEASE обязателен: без него compileExecutable() в build.ts
-# возвращает undefined, и Bun.build({compile}) не получает рантайм-бинарник
-# под target — сборка молча не создаёт исполняемый файл. Форк выставляет
-# его так же в .github/workflows/publish.yml.
-# Релиз bun для компиляции: берём ту же версию, что и сам bun, но только если
-# такой релиз есть. Для 1.4.2/1.4.3 это bun-v1.4.2 / bun-v1.4.3.
-export BUN_COMPILE_RELEASE="${BUN_COMPILE_RELEASE:-bun-v$BUN_VERSION}"
+# BUN_COMPILE_RELEASE можно задать, чтобы вшить рантайм из релиза bun
+# (как в .github/workflows/publish.yml форка). По умолчанию не задаём:
+# для сборки под текущую платформу хватает локального bun.
 ( cd packages/cli && "$BUN_BIN" run script/build.ts --single --skip-install --skip-web-ui )
 
 BIN=$(find_bin || true)
 if [ -z "$BIN" ]; then
   log "БИНАРЬ НЕ СОБРАН"
+  log "содержимое dist:"
+  find "$DIR/packages/cli/dist" -maxdepth 3 2>/dev/null | head -20 || true
   exit 1
 fi
 chmod +x "$BIN"
