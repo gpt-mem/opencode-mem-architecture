@@ -1,6 +1,6 @@
 # OpenCode MEM — Operational Memory Architecture
 
-Status: **v2-линия `main`** (порт апстрима v2.1.0, tip `ae9a8a2575`); экономия токенов через штатное v2-усечение вывода тулов + компактификацию; ядро оперативной памяти (mem_record + put/search/get) в `main` с 2026-10-20 (PR #179/#180/#183). v1-линия `memory-context-v1` архивирована (см. «Чем наш форк отличается…» ниже). Актуально 2026-10-22.
+Status: **v2-линия `main`** (порт апстрима v2.1.0, tip `dfa784627d`); экономия токенов через штатное v2-усечение вывода тулов + компактификацию; ядро оперативной памяти (mem_record + put/search/get) в `main` с 2026-10-20 (PR #179/#180/#183). v1-линия `memory-context-v1` архивирована (см. «Чем наш форк отличается…» ниже). Актуально 2026-10-22.
 Architecture home: `gpt-mem/opencode-mem-architecture`; implementation: `gpt-mem/opencode-mem`, целевая линия `main` (ранее `v2-base`).
 
 ## 1. Goal and scope
@@ -28,6 +28,7 @@ This product is optimized first for small/cheap coding agents that need straight
 | Восстановление сессии с удалённым каталогом | Диалог восстановления больше не открывается пустым списком: всегда есть строка «Custom directory…» (абсолютный путь), список не блокируется на фоновом поиске текущего checkout'а | `packages/tui/src/component/dialog-workspaces.tsx` | без флага | В `main` (PR #193, squash `ae9a8a2575`); тест `packages/tui/test/cli/tui/prompt-move.test.tsx` |
 | Старт ACP на Windows | Подняты таймауты инициализации ACP в виндовых фикстурах (проявление №1 в #174) | `packages/cli/test/acp/subprocess.ts` + три фикстуры | без флага | В `main` (PR #175, merge `3693c3a571`); проявление №2 (зависание после зелёной группы) — открыто |
 | Тесты приложения против живого сервера | e2e приложения поднят против настоящего сервера (`e2e/real/`), а не только против мока; мок синхронизирован с API сервера | `packages/app/e2e/real/*`, `packages/app/e2e/unit/*` | без флага | В `main` (PR #184 squash `9fc966c738`, PR #177 squash `920e29bce1`) |
+| Скоуп списка сессий по репозиторию | Менеджер сессий скоупит список по **репозиторию**, а не по точному каталогу: запрос несёт только `project` (без `subpath`), глобальный проект / каталог вне git → запрос без фильтров, список «все репозитории» группируется по репозиторию, подписи — `Sessions in <repo>` / `Sessions in all repositories`. Сессии из соседних подпапок, ворктри и клонов одного репозитория наконец видны | `packages/tui/src/component/dialog-session-list.tsx`, тест `packages/tui/test/cli/tui/dialog-session-list.test.tsx` | без флага | В `main` (PR #200, squash `dfa784627d`); закрывает #199 |
 | CI под форк | Матрица юнитов по репозиторию (linux/windows на github-hosted, без blacksmith), правила форка переведены на `main`, мёртвый `dev`-триггер выпилен, wall-time обрезан, пайплайны форка не ждут креды, которых у него нет | `.github/workflows/test.yml` и др. | без флага | В `main` (PR #151/#152/#155/#167/#173/#176) |
 
 ### Снято из форка (не возвращать)
@@ -38,7 +39,7 @@ This product is optimized first for small/cheap coding agents that need straight
 
 | Дефект | Где | Issue | Состояние |
 |---|---|---|---|
-| Plain-text фолбэк `search_operational_memory` отдаёт худшие совпадения (сортировка по убыванию hits + `slice(-limit)` по хвосту) | `packages/core/src/session/mem-record-store.ts:179` и `:248` | #194 | открыт, в `main` не исправлено |
+| Plain-text фолбэк `search_operational_memory` отдаёт худшие совпадения (сортировка по убыванию hits + `slice(-limit)` по хвосту) | `packages/core/src/session/mem-record-store.ts:179` и `:248` | #194 | **фикс есть в ветке `memory-search-ranking` (`281e1230a2`), запушен в origin, в `main` пока не слит** |
 | Описание read-тула обещает 2000 строк, фактический потолок ≈624 (`MAX_READ_BYTES = 50 KiB`) | `packages/core/src/tool/plugin/read.ts:23`, `packages/core/src/tool/read-filesystem.ts:15` | #198 | открыт |
 | Приёмка зелёная при «ответ модели ≠ исходник»: check'и сверяют маркер и наличие файла, а не содержимое | `run-selftest.sh:213/:218` | #195 | открыт |
 | Needle-check без скоупа по прогону + отсутствует гейт `sha256(candidate) == sha256(installed)` | `run-selftest.sh:65-70/:227` | #197 | открыт |
@@ -49,10 +50,10 @@ This product is optimized first for small/cheap coding agents that need straight
 
 ### Состояние линии (2026-10-22)
 
-- Форк `gpt-mem/opencode-mem`, линия `main`, tip `ae9a8a2575` (PR #193). **Открытых PR — 0.**
+- Форк `gpt-mem/opencode-mem`, линия `main`, tip `dfa784627d` (PR #200, скоуп списка сессий по репозиторию — закрывает #199). **Открытых PR — 0.**
 - Порты апстрима: **v2.1.0** — слит (PR #171, ветка `port-v2-1-0`); **v2.1.1** — не начат, 0 из 11 PORT-коммитов в `main` (#185, ждём решений по 21 пункту ASK); **v2.1.2** — не начат, 0 из 20 (#189, ждём 26 пунктов ASK). Блокер один и тот же — решения человека.
 - v1-линия: `memory-context-v1` (tip `7a65cc2541`) и архивная `archive-v1-line` — на remote, содержимое в `main` не переносилось (см. «Что НЕ перенесено из v1»).
-- Открытых issue — 22; проверены по чеклисту/связанным PR: **закрывать нечего** (у каждого есть невыполненные пункты). Статус-комментарии оставлены на #185, #188, #189, #190, #191, #194, #195, #196, #197, #198.
+- Открытых issue — 22; проверены по чеклисту/связанным PR: **закрывать нечего** (у каждого есть невыполненные пункты). Статус-комментарии оставлены на #185, #188, #189, #190, #191, #194, #195, #196, #197, #198 (+ сводка на эпик #15).
 
 ### Что держим как терминальный агент
 
