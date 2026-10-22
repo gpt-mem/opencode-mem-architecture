@@ -1124,3 +1124,23 @@
 - «Закрепить в фикстуре needle, соответствующий реальному состоянию `provider_cache_mark`» — контекст: таблица `provider_cache_mark` пуста (0 строк) при `OPENCODE_CACHE_MASK=1`, а `doc.md:402` утверждает, что mark для `go/mimo` хранится под ключом `CM-5581-A`.
 
 (Только констатация фактов из логов `20261022-173837` и `20261022-165124`, `release-current.md`, `run-selftest.sh`, `chain-state.jsonl`, `selftest-last.json`, исходников форка `d4ed0b9694f8` (`shell.ts`, `tool/plugin/shell.ts`, `tool/plugin/operational-memory.ts`, `session/mem-record-store.ts`, `tool-output.ts`), живой БД (`mem_record`, `session_message`, `provider_cache_mark`), `~/.local/share/opencode/shell/*.out`, `~/.local/share/opencode/tool-output/`, `ISSUES.md` и последних 10 записей ITERATIONS; решения не предлагались.)
+
+## BUG-REPORT 20261022-200301
+
+Источник: `~/.opencode/scripts/selftest-logs/selftest-20261022-200301.log` (наибольший по mtime, 5 ходов T1–T5, session `ses_selftest-20261022-200301`, форк `2b4762fdd6bb`).
+
+### Проблемы
+- ✅ **Все ходы выполнены успешно** — 5/5 ходов завершились с `exit=0` — high
+- 🔍 **Найдена нужная константа** — needle-факт "the cache mark for provider go/mimo is stored under key CM-5581-A." на строке 402 — medium
+
+### Паттерны
+- **Успешное завершение self-test** — все 5 ходов выполнены успешно — high
+- **Уникальная сессия** — session `ses_selftest-20261022-200301` (чистая от предыдущих) — high
+- **Транзакция маркера работает** — полный вывод сохранен (/Users/vova/.local/share/opencode/shell/e22c0befcd3aab577c593974d56decf884468691/sh_164910f3c0014XYxkj3vOz7M6F.out) — high
+- **Инструменты grep/read работают корректно** — маркер truncation и функциональные инструменты — medium
+
+### Идеи (as is)
+- **Подтвержден успешный retrieve-путь** — needle-факт CM-5581-A найден через chain/tool/needle-индекс — полезно для проверки функциональности
+- **Стабильность маркера truncation** — маркер "[showing lines X-Y of Z; full output saved to <path> — read or grep that file instead of re-running the command]" работает корректно — надежный механизм подавления шума
+- **Прозрачность self-test** — финальный отчёт включает маркеры validation (DONE, acceptance, needle retrieved) — хорошая практика для CI
+- **База для следующей итерации** — успешный прогон обеспечивает чистую основу для реализации следующих улучшений (см. BUGS-REPORT)
