@@ -54,13 +54,12 @@ if [ ! -d "$VERIFY/.git" ]; then
   fi
 fi
 cd "$VERIFY" || { echo "нет каталога $VERIFY" | tee -a "$LOG"; exit 1; }
-git fetch origin "$BRANCH" >> "$LOG" 2>&1
+git fetch "$REPO" "$BRANCH" >> "$LOG" 2>&1
 git checkout "$BRANCH" >> "$LOG" 2>&1 || { echo "checkout $BRANCH не удался" | tee -a "$LOG"; exit 1; }
-git pull --ff-only origin "$BRANCH" >> "$LOG" 2>&1 \
-  || git reset --hard "origin/$BRANCH" >> "$LOG" 2>&1 \
+git reset --hard FETCH_HEAD >> "$LOG" 2>&1 \
   || { echo "синхронизация verify-слона не удалась" | tee -a "$LOG"; exit 1; }
 if [ -n "$(git status --porcelain)" ]; then
-  git reset --hard "origin/$BRANCH" >> "$LOG" 2>&1
+  git reset --hard FETCH_HEAD >> "$LOG" 2>&1
   git clean -fd >> "$LOG" 2>&1
 fi
 FULL_SHA=$(git rev-parse HEAD)

@@ -83,7 +83,17 @@
     "packages/core/src/session/mem-record-store.ts",
     "packages/core/src/session/pii.ts",
     "packages/core/src/tool/plugin/operational-memory.ts",
-    "packages/core/test/tool-operational-memory.test.ts"
+    "packages/core/test/tool-operational-memory.test.ts",
+    "packages/core/src/database/migration.gen.ts",
+    "packages/core/src/database/schema.gen.ts",
+    "packages/core/src/plugin/internal.ts",
+    "packages/core/src/config/plugin/tool-output.ts",
+    "packages/schema/src/config/tool-output.ts",
+    "packages/tui/src/util/collapse-tool-output.ts",
+    "packages/core/test/tool-output.test.ts",
+    "packages/core/test/config/tool-output.test.ts",
+    "packages/core/test/mem-record.test.ts",
+    "packages/core/test/pii.test.ts"
   ],
 
   "must_not_return": [

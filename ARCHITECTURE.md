@@ -1,6 +1,6 @@
 # OpenCode MEM — Operational Memory Architecture
 
-Status: **v2-линия `main`** (порт апстрима v2.1.0); экономия токенов через штатное v2-усечение вывода тулов + компактификацию; ядро оперативной памяти (mem_record + put/search/get) в `main` с 2026-10-20 (PR #179/#180/#183). v1-линия `memory-context-v1` архивирована (см. «Чем наш форк отличается…» ниже). Актуально 2026-10-20.
+Status: **v2-линия `main`** (порт апстрима v2.1.0, tip `ae9a8a2575`); экономия токенов через штатное v2-усечение вывода тулов + компактификацию; ядро оперативной памяти (mem_record + put/search/get) в `main` с 2026-10-20 (PR #179/#180/#183). v1-линия `memory-context-v1` архивирована (см. «Чем наш форк отличается…» ниже). Актуально 2026-10-22.
 Architecture home: `gpt-mem/opencode-mem-architecture`; implementation: `gpt-mem/opencode-mem`, целевая линия `main` (ранее `v2-base`).
 
 ## 1. Goal and scope
@@ -9,7 +9,7 @@ Build a built-in, deterministic-first Operational Memory for coding workflows. P
 
 This product is optimized first for small/cheap coding agents that need straightforward tool names and simple inputs. It must work offline without embeddings or LLM calls. Embeddings are optional after the deterministic baseline works; semantic retrieval must not silently replace exact/regex.
 
-## Чем наш форк отличается от основного OpenCode (актуально: 2026-10-20)
+## Чем наш форк отличается от основного OpenCode (актуально: 2026-10-22)
 
 Форк `gpt-mem/opencode-mem`, целевая линия — **`main`** (переименована из `v2-base`, PR #169), база — апстрим `anomalyco/opencode` **v2.1.0** (порт PR #171). Старая v1-линия (`memory-context-v1`, `dev`) архивирована как `archive-v1-line`; `packages/opencode` (V1-сессия) удалён — форк теперь чистая v2-раскладка (`packages/core`/`cli`/`tui`/`server`).
 
@@ -18,25 +18,53 @@ This product is optimized first for small/cheap coding agents that need straight
 | Компонент | Что добавлено | Файл в коде | Как включить | Статус |
 |---|---|---|---|---|
 | Усечение вывода тулов | Лимит вывода инструмента в контексте модели: `MAX_BYTES = 2 KiB`, `MAX_LINES = 2000`. Всё длиннее пишется на диск (managed output, retention 7 дней), в контекст уходит усечённый превью + маркер `Full output saved to:` | `packages/core/src/tool-output.ts` (`ToolOutput`), конфиг-плагин `packages/core/src/config/plugin/tool-output.ts`, схема `packages/schema/src/config/tool-output.ts`, TUI `packages/tui/src/util/collapse-tool-output.ts` | конфиг `tool_output` (`max_bytes`/`max_lines`); дефолт 2 КиБ/2000 без флага | В `main` (PR #148, squash `58eaaa8b8b7b`); тесты `packages/core/test/tool-output.test.ts`, `packages/core/test/config/tool-output.test.ts` |
-| Детектор doom-loop | Advisory-предупреждение, когда последние 4 завершённых tool-call имеют одинаковые tool+input+output: «Doom loop suspected… change the approach». Cross-step (каждый повтор — своё assistant-сообщение). Автостопа нет | `packages/core/src/session/runner/doom-loop.ts`, хук в `packages/core/src/session/runner/llm.ts` | без флага — всегда; порог `THRESHOLD=4` | В `main` (PR #154, squash `02f0d458a244`); тест `packages/core/test/doom-loop.test.ts` |
-| Cross-spawn spawner | Свой спавнер держит broken pipe (EPIPE) от затирания ответа ребёнка — код возврата и stderr ребёнка остаются ответом | `packages/util/src/cross-spawn-spawner.ts` | без флага | В `main` (PR #153, squash `88970e3ae9a3`); тест `packages/core/test/effect/cross-spawn-spawner.test.ts` |
+| Детектор doom-loop | Advisory-предупреждение, когда последние 4 завершённых tool-call имеют одинаковые tool+input+output: «Doom loop suspected… change the approach». Cross-step (каждый повтор — своё assistant-сообщение). Автостопа нет | `packages/core/src/session/runner/doom-loop.ts`, хук в `packages/core/src/session/runner/llm.ts` | без флага — всегда; порог `THRESHOLD=4` | В `main` (PR #154, merge `02f0d458a244`); тест `packages/core/test/doom-loop.test.ts` |
+| Cross-spawn spawner | Свой спавнер держит broken pipe (EPIPE) от затирания ответа ребёнка — код возврата и stderr ребёнка остаются ответом | `packages/util/src/cross-spawn-spawner.ts` | без флага | В `main` (PR #153, merge `88970e3ae9a3`); тест `packages/core/test/effect/cross-spawn-spawner.test.ts` |
 | Идемпотентная миграция БД | `provider_cache_mark` создаётся через `CREATE TABLE IF NOT EXISTS` — форк не падает на боевой базе, где таблица осталась от удалённого леджера | `packages/core/src/database/migration/20261019172723_colossal_sue_storm.ts` | — (миграция) | В `main` (PR #164, squash `663876427c`); регрессионный тест |
 | Operational Memory (ядро) | Таблица `mem_record` (project-scoped, versioning через `supersedes`, `MAX_CHAIN=10`), модуль PII-redaction, store `writeBatch/search/getWithChain`, тулы `put_in_operational_memory` / `search_operational_memory` / `get_operational_memory` через Plugin API (Location/Permission-scoped). PII-редакция до персиста; `authority=agent` unless `decided_by`; search hint при 0 совпадений; NL-фолбэк поиска: `query` сначала как regex, при 0 совпадений — plain-text по словам с ранжированием, невалидный regex не роняет поиск | `packages/core/src/session/mem-record.sql.ts`, `mem-record.ts`, `mem-record-store.ts`, `pii.ts`, `packages/core/src/tool/plugin/operational-memory.ts`, регистрация в `packages/core/src/plugin/internal.ts` | без флага — всегда (как core Plugin API) | В `main` (PR #179 слайсы 1–2 `03349ef2b2`, PR #180 слайс 3 `dfde60d61`); тест `packages/core/test/tool-operational-memory.test.ts`; NL-фолбэк поиска — PR #187 (squash `1b3dc3065485`) |
 | Идемпотентная миграция `mem_record` | `CREATE TABLE IF NOT EXISTS` — v1-миграция `20261011235047_mem_record` могла уже создать таблицу в общей базе; форк раньше падал и не открывал её (selftest NOT-BOUND, issue #182) | `packages/core/src/database/migration/20261020143020_volatile_mister_fear.ts` | — (миграция) | В `main` (PR #183, squash `256e068a4d`); CI зелёный на linux+windows |
 | Общая база со стоком | Сборка задаёт `OPENCODE_CHANNEL=latest`, иначе `database-path.ts` берёт `opencode-<канал>.db` и форк открывает пустую параллельную базу | `packages/cli/script/build.ts` + env `OPENCODE_CHANNEL` | env при сборке `OPENCODE_CHANNEL=latest` | В `main` (PR #162, squash `d980227b50`) |
 | README-раздел установки | «OpenCode MEM (this fork)»: релиз/исходники/откат/проверка SHA; помечено, что `npm i -g @opencode/cli` — это upstream | `README.md` | — | В `main` (PR #157, squash `d5ecd5409ff4`) |
+| Восстановление сессии с удалённым каталогом | Диалог восстановления больше не открывается пустым списком: всегда есть строка «Custom directory…» (абсолютный путь), список не блокируется на фоновом поиске текущего checkout'а | `packages/tui/src/component/dialog-workspaces.tsx` | без флага | В `main` (PR #193, squash `ae9a8a2575`); тест `packages/tui/test/cli/tui/prompt-move.test.tsx` |
+| Старт ACP на Windows | Подняты таймауты инициализации ACP в виндовых фикстурах (проявление №1 в #174) | `packages/cli/test/acp/subprocess.ts` + три фикстуры | без флага | В `main` (PR #175, merge `3693c3a571`); проявление №2 (зависание после зелёной группы) — открыто |
+| Тесты приложения против живого сервера | e2e приложения поднят против настоящего сервера (`e2e/real/`), а не только против мока; мок синхронизирован с API сервера | `packages/app/e2e/real/*`, `packages/app/e2e/unit/*` | без флага | В `main` (PR #184 squash `9fc966c738`, PR #177 squash `920e29bce1`) |
+| CI под форк | Матрица юнитов по репозиторию (linux/windows на github-hosted, без blacksmith), правила форка переведены на `main`, мёртвый `dev`-триггер выпилен, wall-time обрезан, пайплайны форка не ждут креды, которых у него нет | `.github/workflows/test.yml` и др. | без флага | В `main` (PR #151/#152/#155/#167/#173/#176) |
+
+### Снято из форка (не возвращать)
+
+- **Маска Ladder + леджер кэша** (`ladder_cache_variant`, `provider_cache_mark`) — удалены PR #165 (squash `7a12f66b4a`): сервис Ladder проверяет поле по своему списку rung'ов и отвечал `400 invalid ladder_cache_variant`, из-за чего второй шаг ассистента на `ladder/*` умирал. Остались штатные v2-маркеры усечения. Файлы `cache-mask.ts`/`cache-mark.ts` — в `must_not_return` профиля дозора.
+
+### Известные дефекты линии `main` (на 2026-10-22)
+
+| Дефект | Где | Issue | Состояние |
+|---|---|---|---|
+| Plain-text фолбэк `search_operational_memory` отдаёт худшие совпадения (сортировка по убыванию hits + `slice(-limit)` по хвосту) | `packages/core/src/session/mem-record-store.ts:179` и `:248` | #194 | открыт, в `main` не исправлено |
+| Описание read-тула обещает 2000 строк, фактический потолок ≈624 (`MAX_READ_BYTES = 50 KiB`) | `packages/core/src/tool/plugin/read.ts:23`, `packages/core/src/tool/read-filesystem.ts:15` | #198 | открыт |
+| Приёмка зелёная при «ответ модели ≠ исходник»: check'и сверяют маркер и наличие файла, а не содержимое | `run-selftest.sh:213/:218` | #195 | открыт |
+| Needle-check без скоупа по прогону + отсутствует гейт `sha256(candidate) == sha256(installed)` | `run-selftest.sh:65-70/:227` | #197 | открыт |
+| Метрики v2 не в цепочке приёмки: `mem-metrics-v2.sh` переписан, но не вызывается | `run-selftest.sh`, `run-mem-chain.sh` | #190 | частично: скрипт есть, вызов не включён |
+| Релиз-ноты обещают v2-флаги `OPENCODE_CACHE_MASK`/`OPENCODE_CACHE_MARK_IDLE_MS`, которых в v2 нет | `~/.opencode/scripts/release-current.md` | #191 | открыт |
+| Кандидат может собраться из локального `main` work-клона вместо `origin/main` | `chain/run-build.sh` | #188 | фикс применён в задеплоенном скрипте и в `chain/` (2026-10-22); явного гейта по SHA нет |
+| Корень давления на диск не устранён: `~/.worktrees` = 36 GiB / 27 ворктри, prune не в цепочке | `chain/run-build.sh`, `chain/run-mem-chain.sh` | #196 | открыт |
+
+### Состояние линии (2026-10-22)
+
+- Форк `gpt-mem/opencode-mem`, линия `main`, tip `ae9a8a2575` (PR #193). **Открытых PR — 0.**
+- Порты апстрима: **v2.1.0** — слит (PR #171, ветка `port-v2-1-0`); **v2.1.1** — не начат, 0 из 11 PORT-коммитов в `main` (#185, ждём решений по 21 пункту ASK); **v2.1.2** — не начат, 0 из 20 (#189, ждём 26 пунктов ASK). Блокер один и тот же — решения человека.
+- v1-линия: `memory-context-v1` (tip `7a65cc2541`) и архивная `archive-v1-line` — на remote, содержимое в `main` не переносилось (см. «Что НЕ перенесено из v1»).
+- Открытых issue — 22; проверены по чеклисту/связанным PR: **закрывать нечего** (у каждого есть невыполненные пункты). Статус-комментарии оставлены на #185, #188, #189, #190, #191, #194, #195, #196, #197, #198.
 
 ### Что держим как терминальный агент
 
 - `packages/tui`, `packages/cli`, `packages/core`, `packages/server` — без нативного приложения (`packages/app`/`desktop`) и без веба.
 - Codemode (`packages/codemode`), Ladder-провайдер, общая база сессий со стоком.
-- Профиль продукта (для дозора по апстриму) — `opencode-mem-architecture/chain/upstream-policy.json`: `must_keep` = `tool-output.ts`, `shell.ts`, `doom-loop.ts`, миграции `colossal_sue_storm` + `volatile_mister_fear` (mem_record), `cross-spawn-spawner.ts`, `doom-loop.test.ts`, `mem-record.sql.ts`, `mem-record.ts`, `mem-record-store.ts`, `pii.ts`, `tool/plugin/operational-memory.ts`, `tool-operational-memory.test.ts`; `must_not_return` = `cache-mask.ts`, `cache-mark.ts`.
+- Профиль продукта (для дозора по апстриму) — `opencode-mem-architecture/chain/upstream-policy.json`: `must_keep` (23 файла) = `tool-output.ts`, `shell.ts`, `doom-loop.ts`, миграции `colossal_sue_storm` + `volatile_mister_fear` (mem_record) и их запись в `migration.gen.ts`/`schema.gen.ts`, `cross-spawn-spawner.ts`, `doom-loop.test.ts`, `mem-record.sql.ts`, `mem-record.ts`, `mem-record-store.ts`, `pii.ts`, `tool/plugin/operational-memory.ts` + `tool-operational-memory.test.ts`, `plugin/internal.ts` (регистрация тулов памяти), конфиг-плагин усечения `config/plugin/tool-output.ts`, схема `schema/src/config/tool-output.ts`, TUI `tui/src/util/collapse-tool-output.ts` и тесты `tool-output.test.ts`, `config/tool-output.test.ts`, `mem-record.test.ts`, `pii.test.ts`; `must_not_return` = `cache-mask.ts`, `cache-mark.ts`.
 
 ### Что НЕ перенесено из v1 (остальной Operational Memory-слой, удалён)
 
 `MemoryContext.project`/`projectV1` (проекция контекста), discover-тулы `get_tool_call_overview`/`find_tool_calls`/`get_tool_call_details`/`find_pii`, intent-tracker + `OPENCODE_MEMORY_INTENT*`, cache-mark/cache-mask + `OPENCODE_MEMORY_CACHE_MARK`, first-delivery, reasoning-компакция, `schedule_job`, run-id-заголовок (`x-opencode-run-id`). Все 16 env-флагов `OPENCODE_MEMORY_*` из v1 в v2 не читаются. Портированы в v2 (PR #179/#180): `pii.ts`, `mem-record.ts`, `mem-record-store.ts`, тулы put/search/get_operational_memory, таблица `mem_record`.
 
-Дозор за апстримом — `upstream-watch` (GHA, cron `17 */6 * * *`) + `upstream-policy.json` (классы PORT/ASK/SKIP); merge порта — за человеком. История v1-линии (48 коммитов `memory-context-v1`, PR #1–#72) — в git-истории форка и в `ITERATIONS.md`.
+Дозор за апстримом — `upstream-watch` (GHA, cron `17 */6 * * *`) + `upstream-policy.json` (классы PORT/ASK/SKIP); merge порта — за человеком. История v1-линии (89 коммитов `memory-context-v1` от общей базы `0112a92c41` от 2026-10-01, форковые PR #1–#115) — в git-истории форка и в `ITERATIONS.md`.
 
 ## 2. Existing OpenCode components to reuse (verified on `dev`)
 
