@@ -33,10 +33,9 @@ START_MS=$(($(date +%s) * 1000))
 NEEDLE="CM-5581-A"
 
 export PATH="$HOME/.local/bun142/bun-darwin-aarch64:$HOME/.bun/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
-# v2-флаги форка: маска кэша (по умолчанию включена) и её idle-порог.
-# Старые OPENCODE_MEMORY_* из v1 на v2 не существуют.
-export OPENCODE_CACHE_MASK=1
-export OPENCODE_CACHE_MARK_IDLE_MS=600000
+# v2-флаги форка: нет флага маски кэша (усечение маркером всегда включено).
+# Idle-порог для Unified Mask (provider cache-mark ledger) — OPENCODE_MEMORY_MARK_IDLE_MS (0 = off, дефолт 30 мин).
+export OPENCODE_MEMORY_MARK_IDLE_MS=1800000
 
 skip() { echo "$1" | tee -a "$LOG"; echo "=== SELFTEST $STAMP SKIPPED ===" | tee -a "$LOG"; exit 78; }
 fail() { echo "$1" | tee -a "$LOG"; echo "LOG: $LOG"; exit 70; }

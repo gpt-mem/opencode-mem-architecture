@@ -136,8 +136,8 @@ NOTES="$STAGE/notes.md"
   echo "Полная раскладка сборок (current/previous, откат) — в README форка."
   echo ""
   echo "## Флаги v2"
-  echo '- `OPENCODE_CACHE_MASK=0` — выключить маску кэша (по умолчанию включена)'
-  echo '- `OPENCODE_CACHE_MARK_IDLE_MS` — через сколько мс простоя считать scope холодным'
+  echo '- `OPENCODE_MEMORY_MARK_IDLE_MS=1800000` — через сколько мс простоя считать scope Unified Mask холодным (0 = off)'
+  echo '(усечение вывода тулов и Unified Mask всегда включены — без флагов)'
 } > "$NOTES"
 
 # 4. Публикация релиза. --target обязателен: без него GitHub вешает тег на
