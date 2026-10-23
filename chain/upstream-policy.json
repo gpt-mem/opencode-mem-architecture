@@ -13,6 +13,7 @@
       "экономия токенов: усечение вывода инструментов (packages/core/src/tool-output.ts) и компактификация сессии",
       "наши фишки: детектор doom-loop, свой cross-spawn spawner, миграции БД без леджера масок и идемпотентные",
       "оперативная память v2: mem_record + put/search/get_operational_memory",
+      "экономия контекста v2: проекция контекста (memory-context.ts) + путь восстановления (get_tool_call_details) + Unified Mask ledger (cache-mark-ledger.ts)",
       "Codemode, Ladder-провайдер, общая база сессий со стоком"
     ],
     "excludes": [
@@ -93,7 +94,15 @@
     "packages/core/test/tool-output.test.ts",
     "packages/core/test/config/tool-output.test.ts",
     "packages/core/test/mem-record.test.ts",
-    "packages/core/test/pii.test.ts"
+    "packages/core/test/pii.test.ts",
+    "packages/core/src/session/memory-context.ts",
+    "packages/core/src/session/evidence.ts",
+    "packages/core/src/session/cache-mark-ledger.ts",
+    "packages/core/src/tool/plugin/get-tool-call-details.ts",
+    "packages/core/src/database/migration/20261022000000_unified_mask_cache_mark_ledger.ts",
+    "packages/core/test/memory-context.test.ts",
+    "packages/core/test/cache-mark-ledger.test.ts",
+    "packages/core/test/tool-get-tool-call-details.test.ts"
   ],
 
   "must_not_return": [
