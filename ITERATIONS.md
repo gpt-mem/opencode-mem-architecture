@@ -270,6 +270,10 @@
 ## 2026-10-22 | bug | #196 (prune `~/.worktrees`): 36 GiB → 2.8 GiB (23 → 16 ворктри), освобождено **26.7 GiB**. `prune-worktrees.sh` переписан с правилами безопасности (только форк `opencode-mem`, чистое дерево, HEAD запушен, нет непушнутых локальных коммитов) и подключён в `run-mem-chain.sh` **перед** сборкой: обычный prune (7 суток) + гейт диска (< 5 GiB → агрессивный prune `--max-age=0`, безопасно — ветки остаются в origin). Записи в `chain-state.jsonl` (`prune` / `prune-detail`). В цикле 17:38–17:44: removed=7, freed=2666252 KiB; 18:14–18:15 (агрессивный): removed=9, freed=12100240 KiB.
 ## 2026-10-22 | chain | chain 20261022-0602 — зелёная 4/4 второй прогон подряд, SHA не меняется ТРЕТИЙ цикл подряд, приёмка фиктивна — модель выдумала строку + два ложных утверждения, корень двухконтурный, харнесс сверяет только маркер, DONE до check'ов, игла 599/855 зелёный по построению, NL-поиск #187 proven, органика 1.49 %, ad-hoc ≈ chain, Code Mode ≈75×, asm → shell 92/24ч, question 14/4, CSM-сканер молчит 15.7 ч, count 897/24ch, count 0/19ch, crash 2/31ch
 ## 2026-10-23 | triage | Актуализация #15, проверка статуса работы по #29.
-## 2026-10-23 | fix | Исправлен ReferenceError в cache-mark-ledger.ts (добавлен импорт Effect) и устранён конфликт зависимостей в тестах cache-mark-ledger.test.ts (удалён дубликат CacheMarkLedgerEntry.node). Тесты проходят (7/7 pass).
+## 2026-10-23 | merge | Влита реализация #29 (Unified Mask: provider cache-mark ledger). 
+- Реализация: `CacheMarkLedger` service, таблица `provider_cache_mark`.
+- Тесты: `packages/core/test/cache-mark-ledger.test.ts` (проходят).
+- PR: squash-merge `groom/2026-10-23-cache-mark-ledger` → `main` (SHA `3bc22d5100`).
+- Эффект: готова инфраструктура для обоих треков кэширования (бесплатный/платный).
 
 ## 2026-10-23 | chain | Создание chain-last.md с актуальным chain summary, добавление записи в ITERATIONS.md с сегодняшней датой, создание backup prompt.txt, коммит и push к docs repo.
