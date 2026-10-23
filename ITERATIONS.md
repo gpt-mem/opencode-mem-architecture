@@ -271,3 +271,5 @@
 ## 2026-10-22 | chain | chain 20261022-0602 — зелёная 4/4 второй прогон подряд, SHA не меняется ТРЕТИЙ цикл подряд, приёмка фиктивна — модель выдумала строку + два ложных утверждения, корень двухконтурный, харнесс сверяет только маркер, DONE до check'ов, игла 599/855 зелёный по построению, NL-поиск #187 proven, органика 1.49 %, ad-hoc ≈ chain, Code Mode ≈75×, asm → shell 92/24ч, question 14/4, CSM-сканер молчит 15.7 ч, count 897/24ch, count 0/19ch, crash 2/31ch
 ## 2026-10-23 | triage | Актуализация #15, проверка статуса работы по #29.
 ## 2026-10-23 | feat | #29: Implemented CacheMarkLedgerService methods (getProjectionMark, isMarkStale) and unit tests. Commit: 476b4e49b9. PR creation and issue commenting blocked by token permissions.
+
+## 2026-10-23 | chain | Создание chain-last.md с актуальным chain summary, добавление записи в ITERATIONS.md с сегодняшней датой, создание backup prompt.txt, коммит и push к docs repo.
