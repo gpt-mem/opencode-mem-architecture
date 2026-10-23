@@ -1,6 +1,6 @@
 # OpenCode MEM — Operational Memory Architecture
 
-Status: **v2-линия `main`** (порт апстрима v2.1.0, tip `283c5dbae7`); экономия токенов через штатное v2-усечение вывода тулов + компактификацию; ядро оперативной памяти (mem_record + put/search/get) в `main`. Актуально 2026-10-23.
+Status: **v2-линия `main`** (порт апстрима v2.1.0, tip `9db2ce9a37`); экономия токенов через штатное v2-усечение вывода тулов + компактификацию; ядро оперативной памяти (mem_record + put/search/get) в `main`. Актуально 2026-10-23.
 Architecture home: `gpt-mem/opencode-mem-architecture`; implementation: `gpt-mem/opencode-mem`, целевая линия `main`.
 
 ## 1. Goal and scope
