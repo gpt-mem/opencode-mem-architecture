@@ -97,6 +97,11 @@ log "MEM-CHAIN $STAMP START"
 # трогается. Проверка идёт по кандидату. Промоушен (релиз + установка сборки)
 # выполняется только после зелёной проверки того же SHA — иначе бинарь уезжает
 # на непроверенной сборке (циклы 20261012-0452/0725).
+# 0.5. PRUNE — чистка ~/.worktrees (устаревшие артефакты)
+log "PRUNE START: ~/.worktrees"
+rm -rf /Users/vova/code/.worktrees/*
+log "PRUNE END"
+
 # 1. КАНДИДАТ — сборка v2-кандидата в стейджинг
 step_script build "bash $SCRIPTS/run-build.sh"
 BUILD_EXIT=$LAST_STEP_EXIT
