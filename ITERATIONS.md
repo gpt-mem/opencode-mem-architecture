@@ -3,3 +3,4 @@
 
 2026-10-23 | port | Портировал CacheMarkLedger и MemoryContext проекцию в v2 (WIP) | - | Подготовка к интеграции ledger/хука в runner/llm.ts.
 2026-10-23 | fix | Pass markIndex to SessionMemoryContext.project in runner/llm.ts | - | Fixed bug where cache ledger floor was ignored.
+PR creation failed due to token permissions.
