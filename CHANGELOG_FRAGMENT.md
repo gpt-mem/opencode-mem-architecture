@@ -1,0 +1,5 @@
+- feat(opencode): add skill delivery hooks and graceful opencode-mem init (#115)
+- feat(opencode): add pdf_read tool
+- fix(llm): suppress repeated control-marker stream artifacts (#106)
+- fix(compaction): preserve full tool output for summaries (#104)
+- feat(opencode): send native provider run identity
