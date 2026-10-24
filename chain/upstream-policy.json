@@ -98,16 +98,22 @@
     "packages/core/src/session/memory-context.ts",
     "packages/core/src/session/evidence.ts",
     "packages/core/src/session/cache-mark-ledger.ts",
+    "packages/core/src/session/cache-mark.ts",
     "packages/core/src/tool/plugin/get-tool-call-details.ts",
     "packages/core/src/database/migration/20261022000000_unified_mask_cache_mark_ledger.ts",
     "packages/core/test/memory-context.test.ts",
     "packages/core/test/cache-mark-ledger.test.ts",
+    "packages/core/test/cache-mark.test.ts",
     "packages/core/test/tool-get-tool-call-details.test.ts"
   ],
 
   "must_not_return": [
-    "packages/core/src/session/cache-mask.ts",
-    "packages/core/src/session/cache-mark.ts"
+    "packages/core/src/session/cache-mask.ts"
+  ],
+
+  "must_not_return_notes": [
+    "packages/core/src/session/cache-mark.ts исключён из must_not_return 2026-10-24: путь переиспользован новым v2-модулем Unified Mask (pure-функции prefixHash/markIndexFor/verbatimPrefixLength, ветка cache-mark-wire) и внесён в must_keep. Старый v1-файл удалён вместе с packages/opencode и апстримом не возвращается.",
+    "cache-mask.ts остаётся под запретом: старого v1-файла в v2-раскладке нет и быть не должно."
   ],
 
   "issue_labels": [],
