@@ -33,9 +33,8 @@ START_MS=$(($(date +%s) * 1000))
 NEEDLE="CM-5581-A"
 
 export PATH="$HOME/.local/bun142/bun-darwin-aarch64:$HOME/.bun/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
-# v2-флаги форка: нет флага маски кэша (усечение маркером всегда включено).
-# Idle-порог для Unified Mask (provider cache-mark ledger) — OPENCODE_MEMORY_MARK_IDLE_MS (0 = off, дефолт 30 мин).
-export OPENCODE_MEMORY_MARK_IDLE_MS=1800000
+# v2-флаги форка: нет флага маски кэша (усечение маркером всегда включено),
+# нет и idle-порога леджера (mark приходит из usage.cache_read, флаг мёртв).
 
 skip() { echo "$1" | tee -a "$LOG"; echo "=== SELFTEST $STAMP SKIPPED ===" | tee -a "$LOG"; exit 78; }
 fail() { echo "$1" | tee -a "$LOG"; echo "LOG: $LOG"; exit 70; }
@@ -123,8 +122,8 @@ lines = ['big-output-line-%d %s' % (i, 'x'*60) for i in range(3000)]
 open('$BIG_SH','w').write('\n'.join(lines))
 "
 
-# --standalone поднимает приватный сервер на время хода: так флаги форка
-# (OPENCODE_CACHE_MASK и т.п.) действуют именно на эту проверку. Без него
+# --standalone поднимает приватный сервер на время хода: так флаги v2
+# (OPENCODE_V2_MEMORY_*) действуют именно на эту проверку. Без него
 # ход уходит в общий фоновый сервис, у которого своё окружение.
 run_turn() {
   local turn="$1"; local model="$2"; shift 2

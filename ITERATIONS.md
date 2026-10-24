@@ -12,6 +12,8 @@
 
 #### 4. Selftest green on new installed binary (ran manually): candidate SHA matches installed, all checks pass.
 
+#### 5. mem-metrics-v2 infrastructure fixed (#190): updated script with proper v2 schema queries (tool extraction from session_message.content[]), truncated measurement via JSON metadata, and added metrics step to acceptance chain.
+
 ### Commit log (relevant)
 - `49f55f2c8d` feat(core): wire cache-mark ledger write path + integration tests (issue #202 step 4/5) – *merged, v2 now has ledger core*.
 - `f62df808f3` Merge groom/2026-10-23-cleanup into main.
@@ -29,15 +31,17 @@
 - (docs repo) `chain/run-releaser.sh` – fixed flag names + quoting in release notes generator
 
 ### Peer issues/PRs
-- #202 – unified mask (#29) implementation (v2), steps 1‑5 in `main`, step 6 open (A/B benchmarks).
+- #202 – unified mask (#29) implementation (v2), steps 1‑5 in `main`, step 6 (A/B benchmarks) ready with mem-metrics-v2 infrastructure.
 - #191 – release-notes flag names fixed (pending PR to docs repo).
 - #188 – run-build.sh stale local main fixed (local script + docs repo synced).
 - #196 – prune worktrees (resolved in deployed chain).
+- #190 – mem-metrics-v2 script updated (include step in chain).
 
 ### Next steps
-1. Deterministic A/B benchmark: provider-visible prompt size reduction (one-turn session, projection on vs off), n≥3 arms, needle-recall 100%.
+1. Deterministic A/B benchmark: provider-visible prompt size reduction (one-turn session, projection on vs off), n≥3 arms, needle-recall 100%. Can use mem-metrics-v2 script for production measurement.
 2. Push docs repo changes (run-build.sh, run-releaser.sh) – needs GH token with write access.
 3. Token: need broader PAT or zerocreds for issue/PR interaction.
+4. If A/B benchmarks are not required for acceptance, ledger integration is complete (unit tests pass, integration tests cover acceptance scenarios).
 
 ---
 

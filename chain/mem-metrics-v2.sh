@@ -54,34 +54,34 @@ hit=$(awk -v cr="$tot_cr" -v i="$tot_in" 'BEGIN{ if(cr+i>0) printf "%.1f", 100*c
 printf '%-46s %8s %12s %12s %14s %8s %10s\n' "TOTAL" "$tot_s" "$tot_in" "$tot_out" "$tot_cr" "$tot_cw" "$tot_cost"
 echo "cache_hit_pct (cache_read / (cache_read + tok_in)) = $hit"
 
-# --- 2. Memory tools: v1-схема (part) по всем БД ---
-hdr "2. Memory tool calls (24h window) — v1 schema part[]"
-: >/tmp/.mm_tools.$$
-for f in "$DIR"/opencode*.db; do
-  [ -e "$f" ] || continue
-  sqlite3 -separator '|' "$f" \
-    "SELECT json_extract(p.data,'\$.tool'), count(*) FROM part p JOIN message m ON m.id=p.message_id
-     WHERE json_extract(p.data,'\$.type')='tool' AND m.time_created > $CUT
-       AND json_extract(p.data,'\$.tool') IN ('get_tool_call_overview','find_tool_calls',
-            'get_tool_call_details','find_agent_artifact','operationalMemory','find_pii',
-            'search_operational_memory','put_in_operational_memory','get_operational_memory')
-     GROUP BY 1;" 2>/dev/null >>"/tmp/.mm_tools.$$"
-done
-if [ -s "/tmp/.mm_tools.$$" ]; then sort -t'|' -k2 -rn "/tmp/.mm_tools.$$"; else echo "(нет вызовов memory-тулов)"; fi
-rm -f "/tmp/.mm_tools.$$"
-
-# --- 3. Memory tools: v2-схема (session_message.content[].name) ---
-hdr "3. Memory tool calls — v2 schema session_message[]"
+# --- 2. Memory tools: v2-schema only (session_message.content[]) ---
+# v1 schema (part) is frozen and empty for 24h window
+hdr "2. Memory tool calls (24h) — v2 schema session_message.content[]"
 if [ -f "$MAIN" ]; then
   sqlite3 -separator '|' "$MAIN" \
     "SELECT json_extract(j.value,'\$.name'), count(*) FROM session_message m,
        json_each(json_extract(m.data,'\$.content')) j
      WHERE m.type='assistant' AND m.time_created > $CUT
        AND json_extract(j.value,'\$.type')='tool'
-       AND (json_extract(j.value,'\$.name') LIKE '%memory%'
-         OR json_extract(j.value,'\$.name') LIKE '%tool_call%'
-         OR json_extract(j.value,'\$.name') LIKE '%pii%')
+       AND json_extract(j.value,'\$.name') IN (
+         'get_tool_call_overview','find_tool_calls','get_tool_call_details',
+         'find_agent_artifact','operationalMemory','find_pii',
+         'search_operational_memory','put_in_operational_memory','get_operational_memory'
+       )
      GROUP BY 1 ORDER BY 2 DESC;" 2>/dev/null || true
+else
+  echo "(no main opencode.db)"
+fi
+
+# --- 3. All tool calls (v2) ---
+hdr "3. All tool calls (24h) — v2 schema"
+if [ -f "$MAIN" ]; then
+  sqlite3 -separator '|' "$MAIN" \
+    "SELECT json_extract(j.value,'\$.name'), count(*) FROM session_message m,
+       json_each(json_extract(m.data,'\$.content')) j
+     WHERE m.type='assistant' AND m.time_created > $CUT
+       AND json_extract(j.value,'\$.type')='tool'
+     GROUP BY 1 ORDER BY 2 DESC LIMIT 20;" 2>/dev/null || true
 fi
 
 # --- 4. Intent signals ---
@@ -101,20 +101,64 @@ echo "(пусто = детектор интента в v2-линии не пиш
 # --- 5. Compaction / truncation: измерители v2 ---
 hdr "5. Compaction & tool-output truncation (v2)"
 if [ -f "$MAIN" ]; then
+  # Compaction messages
   sqlite3 -separator '|' "$MAIN" \
     "SELECT 'compaction msgs', count(*) FROM session_message WHERE type='compaction' AND time_created > $CUT
      UNION ALL SELECT 'compaction msgs 7d', count(*) FROM session_message WHERE type='compaction' AND time_created > (strftime('%s','now')-604800)*1000
-     UNION ALL SELECT 'truncation markers', count(*) FROM session_message WHERE data LIKE '%showing lines%' AND time_created > $CUT
-     UNION ALL SELECT 'truncation markers 7d', count(*) FROM session_message WHERE data LIKE '%showing lines%' AND time_created > (strftime('%s','now')-604800)*1000
      UNION ALL SELECT 'sessions time_compacting NOT NULL', count(*) FROM session_v2 WHERE time_created > (strftime('%s','now')-604800)*1000 AND time_compacting IS NOT NULL
      UNION ALL SELECT 'sessions total 7d', count(*) FROM session_v2 WHERE time_created > (strftime('%s','now')-604800)*1000;" 2>/dev/null
+  
+  # Truncation: use json_extract(j.value, '$.state.metadata.truncated') from tool calls
+  echo "--- Truncation (from tool call metadata.truncated) ---"
+  sqlite3 -separator '|' "$MAIN" \
+    "SELECT 'truncated tool calls 24h', count(*)
+     FROM session_message m, json_each(json_extract(m.data,'\$.content')) j
+     WHERE m.type='assistant' AND m.time_created > $CUT
+       AND json_extract(j.value,'\$.type')='tool'
+       AND json_extract(j.value,'\$.state.metadata.truncated') = 1
+     UNION ALL SELECT 'sessions with truncation 24h', count(DISTINCT m.session_id)
+     FROM session_message m, json_each(json_extract(m.data,'\$.content')) j
+     WHERE m.type='assistant' AND m.time_created > $CUT
+       AND json_extract(j.value,'\$.type')='tool'
+       AND json_extract(j.value,'\$.state.metadata.truncated') = 1;" 2>/dev/null
 fi
 
-# --- 6. Живость каналов: последняя сессия по каждому opencode*.db ---
-hdr "6. Channel freshness (last session per DB)"
+# --- 6. Provider cache mark ledger ---
+hdr "6. Provider cache mark ledger"
+if [ -f "$MAIN" ]; then
+  sqlite3 -separator '|' "$MAIN" \
+    "SELECT provider_id, mark_tokens, mark_index, prefix_hash,
+            datetime(last_used_at/1000,'unixepoch','localtime') AS last_used
+     FROM provider_cache_mark ORDER BY last_used_at DESC;" 2>/dev/null
+fi
+
+# --- 7. Memory records (mem_record table) ---
+hdr "7. Memory records (mem_record)"
+if [ -f "$MAIN" ]; then
+  sqlite3 -separator '|' "$MAIN" \
+    "SELECT 'total', count(*) FROM mem_record
+     UNION ALL SELECT 'last 24h', count(*) FROM mem_record WHERE time_created > $CUT
+     UNION ALL SELECT 'by type', type, count(*) FROM mem_record WHERE time_created > $CUT GROUP BY type
+     UNION ALL SELECT 'by scope', scope, count(*) FROM mem_record WHERE time_created > $CUT GROUP BY scope ORDER BY 3 DESC LIMIT 10;" 2>/dev/null
+fi
+
+# --- 8. Channel freshness (last session per DB) ---
+hdr "8. Channel freshness (last session per DB)"
 for f in "$DIR"/opencode*.db; do
   [ -e "$f" ] || continue
   last=$(sqlite3 "$f" "SELECT coalesce(datetime(max(time_created)/1000,'unixepoch','localtime'),'-') FROM session;" 2>/dev/null)
   last2=$(sqlite3 "$f" "SELECT coalesce(datetime(max(time_created)/1000,'unixepoch','localtime'),'-') FROM session_v2;" 2>/dev/null)
   echo "$(basename "$f"): v1=$last v2=$last2"
 done
+
+# --- 9. Sanity check: sessions > 0 in 24h ---
+hdr "9. Sanity check"
+if [ -f "$MAIN" ]; then
+  s24=$(sqlite3 "$MAIN" "SELECT count(*) FROM session_v2 WHERE time_created > $CUT;" 2>/dev/null)
+  if [ "${s24:-0}" -gt 0 ]; then
+    echo "OK: sessions_24h=$s24 > 0"
+  else
+    echo "FAIL: sessions_24h=0 — empty window, metrics unreliable"
+    exit 1
+  fi
+fi

@@ -1,5 +1,5 @@
 #!/bin/bash
-# MEM-CHAIN: кандидат → проверка → промоушен → баг-репортер → учёный → архитектор.
+# MEM-CHAIN: уборка → кандидат → проверка → промоушен → баг-репортер → учёный → архитектор.
 # Запускается launchd local.opencode.mem-chain каждые 2 часа (StartInterval 7200).
 #
 # Системно с описанием релиза апдейта:
@@ -14,6 +14,7 @@
 #
 # Артефакты:
 #   ~/.opencode/scripts/chain-logs/chain-<STAMP>.log   — общий лог
+#   ~/.opencode/scripts/prune-logs/prune-<STAMP>.log    — лог уборки ворктри
 #   ~/.opencode/scripts/release-current.md             — релиз-ноты (вход баг-репортера)
 #   ~/.opencode/scripts/chain-last.md                  — сводка прошлого цикла (архитектор)
 #   ~/.opencode/scripts/chain-state.jsonl              — журнал статусов шагов
@@ -78,11 +79,29 @@ step_script() {
   LAST_STEP_EXIT=$code
 }
 
+# Служебные прогоны форка не должны засорять список сессий пользователя:
+# session manager показывает только корневые сессии (parentID = null), поэтому
+# каждый прогон создаётся как ребёнок общей automation-сессии. Родитель:
+#   ses_opencode-mem-automation — в репозитории форка (шаги chain-*).
+AUTOMATION_PARENT="ses_opencode-mem-automation"
+
+# Родитель создаётся идемпотентно: session.create с явным id вернёт уже
+# существующую сессию, если она есть.
+ensure_automation_parent() {
+  "$OC" api session.create --data \
+    "{\"id\":\"$AUTOMATION_PARENT\",\"title\":\"⚙️ OpenCode MEM automation (chain)\",\"location\":{\"directory\":\"$DOCS\"}}" \
+    >> "$LOG" 2>&1
+}
+
 step_session() {
   local name="$1" prompt_file="$2"
   local t0=$(date +%s)
-  log "STEP $name START (session $name)"
-  ( cd "$DOCS" && "$OC" run --model "$MODEL" --auto --title "chain-$name" \
+  local sid="ses_chain-${name}-${STAMP}"
+  log "STEP $name START (session $sid)"
+  "$OC" api session.create --data \
+    "{\"id\":\"$sid\",\"parentID\":\"$AUTOMATION_PARENT\",\"title\":\"chain-$name\",\"location\":{\"directory\":\"$DOCS\"}}" \
+    >> "$LOG" 2>&1
+  ( cd "$DOCS" && "$OC" run --model "$MODEL" --auto --session "$sid" \
       "$(cat "$prompt_file")" ) >> "$LOG" 2>&1
   local code=$? dur=$(( $(date +%s) - t0 ))
   log "STEP $name END exit=$code dur=${dur}s status=$(status_of "$code")"
@@ -91,16 +110,37 @@ step_session() {
 
 echo "$STAMP" > "$SCRIPTS/chain-current.txt"
 log "MEM-CHAIN $STAMP START"
+ensure_automation_parent
 
-# Порядок шагов: КАНДИДАТ → ПРОВЕРКА → ПРОМОУШЕН.
+# Порядок шагов: УБОРКА → КАНДИДАТ → ПРОВЕРКА → ПРОМОУШЕН.
+# Уборка идёт ДО сборки: корень диска забивается ворктрями (36 GiB / 27 ворктри
+# в цикле 20261022-0602), и сборка форка падает при свободном месте < 5 GiB
+# (run-build.sh → "BUILD SKIPPED: мало места на диске"). Прун не может упасть
+# весь цикл: его ошибка не блокирует сборку, но попадает в chain-state.jsonl.
 # Кандидат собирается и уходит в стейджинг, активный бинарь на этом шаге не
 # трогается. Проверка идёт по кандидату. Промоушен (релиз + установка сборки)
 # выполняется только после зелёной проверки того же SHA — иначе бинарь уезжает
 # на непроверенной сборке (циклы 20261012-0452/0725).
-# 0.5. PRUNE — чистка ~/.worktrees (устаревшие артефакты)
-log "PRUNE START: ~/.worktrees"
-rm -rf /Users/vova/code/.worktrees/*
-log "PRUNE END"
+
+# 0. УБОРКА — старые ворктри форка (правила безопасности внутри prune-worktrees.sh:
+#    только форк, чистое дерево, HEAD запушен, нет непушнутых локальных коммитов).
+# Гейт диска (#196, п.3): если свободно < 5 GiB, сборка всё равно упала бы
+# («standalone module graph: Io») → сначала агрессивная уборка (все чистые
+# запушенные ворктри, независимо от возраста HEAD), затем обычная. Ничего не
+# теряется: дерево чистое, HEAD в remote-ветке, сама ветка остаётся в
+# репозитории (ворктри восстанавливается через `git worktree add`).
+MIN_AVAIL_KB=$((5 * 1024 * 1024)) # 5 GiB — тот же порог, что и в run-build.sh
+AVAIL_KB=$(df -k "$HOME" 2>/dev/null | awk 'NR==2{print $4}')
+if [ -n "$AVAIL_KB" ] && [ "$AVAIL_KB" -lt "$MIN_AVAIL_KB" ]; then
+  log "DISK GATE: свободно $((AVAIL_KB / 1024 / 1024)) GiB < 5 GiB — агрессивная уборка перед сборкой"
+  step_script prune-emergency "bash $SCRIPTS/prune-worktrees.sh --apply --max-age=0"
+else
+  step_script prune "bash $SCRIPTS/prune-worktrees.sh --apply"
+fi
+PRUNE_EXIT=$LAST_STEP_EXIT
+if [ "$PRUNE_EXIT" != "0" ]; then
+  log "PRUNE failed exit=$PRUNE_EXIT (status=$(status_of "$PRUNE_EXIT")) — сборка продолжается, место не освобождено"
+fi
 
 # 1. КАНДИДАТ — сборка v2-кандидата в стейджинг
 step_script build "bash $SCRIPTS/run-build.sh"
@@ -115,6 +155,11 @@ else
   state selftest 77 0 "withheld"
   SELFTEST_EXIT=77
 fi
+
+# 2.5 МЕТРИКИ — выполнить mem-metrics-v2.sh (read-only, поэтому гоняем ВСЕГДА,
+# в том числе при упавшем selftest: именно тогда измерения нужны больше всего).
+step_script metrics "bash $SCRIPTS/mem-metrics-v2.sh"
+METRICS_EXIT=$LAST_STEP_EXIT
 
 # 3. ПРОМОУШЕН — GitHub Release, установка сборки (mem-builds.sh), активный бинарь
 if [ "$SELFTEST_EXIT" = "0" ]; then
