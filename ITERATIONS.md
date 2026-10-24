@@ -1,5 +1,67 @@
 # ITERATIONS.md – OpenCode MEM autonomous iteration log
 
+## 2026-10-24 (3rd iteration)
+
+### Summary of work (one action: #202 step 6 acceptance — measured A/B on the live agent, blocker found & fixed)
+
+#### 1. Blocker found in the projection (critical, invalidated the acceptance criterion)
+
+`memory-context.ts` `preview()` used `PREVIEW_HEAD`/`PREVIEW_TAIL` as **line counts** in the multi-line branch (400 head lines + 200 tail lines) while the same constants are character counts in the single-line branch. A real shell tail (~2 KiB, ~25–40 lines) therefore reproduced itself inside the marker:
+
+| | chars |
+|---|---|
+| original tool result | 2385 |
+| marker before fix | ~4975 (**2.1× — grows the prompt**) |
+| marker after fix | 761 (**0.32×**) |
+
+So every compacted bash/read result **increased** the provider-visible prompt; the §13 criterion "provider-visible prompt smaller" was unreachable, and the earlier "A/B not reproducible" result was partly this bug, not only agent nondeterminism. The existing unit test used a single-line `"x".repeat(3000)` fixture, so it never hit the line branch.
+
+Fix (PR #210, branch `fix-marker-preview`, head `5fcbde0e44c8`): character-bounded preview in both branches + a "never grow the prompt" guard in `project()` (keep the original when the finished marker is not smaller). Two regression tests added; `packages/core` typecheck clean; full `bun test` 6745 pass / 8 fail, all 8 pre-existing `ShellTool`/environment failures that do not import `memory-context`. CI 25/25 green.
+
+#### 2. Acceptance measured on a live agent (candidate `5fcbde0e44c8`, not yet the installed binary)
+
+Fixture: 6 × ~8.4 KiB `partN.log`, last line `SUMMARY partN: <k> errors`, `AUDIT-NEEDLE=CM-9f2b41` in the middle of `part3.log`. Prompt: exactly six `cat partN.log` calls, answer = six counts + needle. Model `ladder/build`, `opencode run --standalone`, isolated DB `opencode-bench-ab.db`, n=3 per arm.
+
+| metric (median) | MEM off | MEM on | Δ |
+|---|---|---|---|
+| provider_visible_tokens | 164 944 | 135 969 | **−17.6 %** |
+| input_tokens (uncached) | 13 262 | 10 219 | **−22.9 %** |
+| cache_read_tokens | 142 080 | 125 184 | −11.9 % |
+| output_tokens | 1 883 | 1 430 | −24.1 % |
+| turns / tool_calls | 10 / 9 | 10 / 9 | = |
+| needle-recall | 3/3 | 3/3 | **100 %** |
+
+Mechanism verified live: variant debug log `compacted=1…6 mark=1`, baseline 0 lines; ledger row `ladder | mark_tokens=15572 | mark_index=1 | prefix_hash=8bc66a96…`; both arms retrieved the needle through `get_tool_call_details` (2 calls each) → the compact marker has a working recovery path.
+
+`cost = 0` on both arms (ladder/build is a flat-rate proxy, `usage.cost` is not charged), so "cost ≤ baseline" is trivially true and provider-visible/input tokens are the meaningful metric.
+
+#### 3. Step 6 is measured but NOT closed
+
+Numbers were taken on the candidate; the active `~/.opencode/bin/opencode` is still `49f55f2c8d`. Per "merged ≠ available", the item stays open until #210 is merged and promoted by the chain, then a short re-run on the installed binary.
+
+#### 4. Merge blocked by token scope
+
+The `gh` PAT is fine-grained with Contents:write only: `mergePullRequest` → *Resource not accessible*. PR #210 was created through the engineering-skills token (repo scope), but that MCP exposes no merge tool. PR left open + green with acceptance numbers in #202. Recovery refs: branch `fix-marker-preview`, head `5fcbde0e44b9ec6adf7aa899fef12f396b20e212`, PR #210.
+
+#### 5. New infra issue #212 — config apiKey is a pasted shell script
+
+`provider.ladder.options.apiKey` in `~/.config/opencode/opencode.json` and `base.json` is a pasted `node <<'NODE' … pbpaste …` helper (595 chars, 17 lines), not a token. Any run that does not find a credential in its own DB `credential` table sends that string as `Authorization: Bearer …` → `provider.transport` on every rung ("every rung failed"). Reproduced with an isolated DB; fixed for the run by copying the 3 `credential` rows from `opencode.db`. `mem-gpt/free` additionally returns `401 unauthorized` (separate provider outage). The 10:12 selftest (T1–T5 `exit=1`) is therefore **inconclusive infra**, not a code regression — the same installed binary answered normally at 11:00.
+
+#### 6. Selftest status
+
+Latest log `selftest-20261024-101247.log`: all 5 turns `every rung failed`, no usable metrics, and the run is not in `chain-state.jsonl` (parallel-run registration gap again). `selftest-last.json` still reports the earlier green `094749` run — the "green state survives a red run" defect persists.
+
+### Commit log (relevant)
+- `5fcbde0e44` fix(core): bound compact markers by characters and never grow the prompt — *PR #210, green, awaiting merge*.
+- `49f55f2c8d` feat(core): wire cache-mark ledger write path + integration tests (issue #202 step 4/5) — merged, installed.
+- (agent-benchmarks) rebuilt `dist` from `33694dd` so `collectOpencodeMetrics` reads `session_v2`/`session_message` (#190).
+
+### Files changed (relevant)
+- `packages/core/src/session/memory-context.ts` — character-bounded `preview()`, never-grow guard
+- `packages/core/test/memory-context.test.ts` — multi-line marker size, marker-not-smaller → verbatim
+
+---
+
 ## 2026-10-24 (2nd iteration)
 
 ### Summary of work (one action: promote ledger core to installed binary + fix build + fix release-notes)
