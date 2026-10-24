@@ -1,3 +1,4 @@
+2026-10-24 | chain | arch chain 20261024-0213 — ROADMAP cycle 23 + prompt.txt 2 edits (status header + schema guard), chain-last.md written | - | CI `main` red 9 jobs (TS2719), V2 flags release-notes broken, "No tool named" schema/runtime mismatch (320x/24h); chain green 5/5, SHA f62df808f332
 2026-10-23 | triage | Триаж issues (закрыл #29 как P0 выполнено, обновил структуру) | - | Актуализировал трекинг.
 2026-10-23 | work | Продолжаю работу в feature/cache-mark-ledger-v2 | - | Интеграция Ledger.
 2026-10-23 | audit/security | Аудит selftest-логов, установка прав 0600, запуск процедуры обновления issue #190/#191 | - | Минимизировал риск утечки ключей API, актуализировал статусы issue
