@@ -10,7 +10,7 @@
 # обязан совпасть с кандидатом. Без совпадения — exit 77, ничего не меняется.
 
 set -u
-VERIFY=/tmp/opencode-mem-verify
+VERIFY=/Users/vova/code/opencode-mem-verify
 BRANCH=main
 REPO=gpt-mem/opencode-mem
 LOG_DIR=~/.opencode/scripts/releaser-logs
@@ -135,9 +135,24 @@ NOTES="$STAGE/notes.md"
   echo "Сток лежит рядом как \`~/.opencode/bin/opencode.stock-backup\`."
   echo "Полная раскладка сборок (current/previous, откат) — в README форка."
   echo ""
-  echo "## Флаги v2"
-  echo '- `OPENCODE_MEMORY_MARK_IDLE_MS=1800000` — через сколько мс простоя считать scope Unified Mask холодным (0 = off)'
-  echo '(усечение вывода тулов и Unified Mask всегда включены — без флагов)'
+  echo '## Флаги v2'
+  echo '- `OPENCODE_V2_MEMORY_CONTEXT=1` — включить проекцию контекста (compact marker'
+  echo '  + `get_tool_call_details` recovery). По умолчанию **выключена** — без неё'
+  echo '  поведение идентично (mark=0 байт-в-байт, Шаг 5 #202).'
+  echo '- `OPENCODE_V2_MEMORY_MIN_CHARS=N` — порог, ниже которого tool-результат'
+  echo '  не сжимается (по умолчанию = 2048). Должен быть > 4000 (размер чанка'
+  echo '  `get_tool_call_details`), иначе компактация не окупается.'
+  echo '- `OPENCODE_V2_MEMORY_TOOLS=tool1,tool2` — белый список тулов,'
+  echo '  чьи результаты сжимаются (по умолчанию: shell, read, webfetch, websearch).'
+  echo '- `OPENCODE_V2_MEMORY_CONTEXT_DEBUG=1` — `[mem-context] …` в лог.'
+  echo ''
+  echo '### Флаги v1 (не существуют на v2)'
+  echo '- `OPENCODE_MEMORY_CONTEXT` / `OPENCODE_MEMORY_INTENT` / `OPENCODE_MEMORY_*` —'
+  echo '  **принадлежат v1 (`memory-context-v1`) и не читаются на `main`**. Маска кэша'
+  echo '  (Ladder cache mask) на v2 **удалена** (`ProviderCacheMarkTable` — реликт схемы,'
+  echo '  INSERT/SELECT в `main` нет); таблица `intent_signal` — 0 строк за историю.'
+  echo '  Установленный бинарь не содержит ни одного `OPENCODE_CACHE_*`/`OPENCODE_MEMORY_*`'
+  echo '  (проверено `strings -a` — 0 совпадений).'
 } > "$NOTES"
 
 # 4. Публикация релиза. --target обязателен: без него GitHub вешает тег на

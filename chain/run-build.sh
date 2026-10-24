@@ -14,8 +14,8 @@
 #   ~/.opencode/scripts/build-logs/build-<STAMP>.log
 
 set -u
-FORK=/tmp/opencode-mem
-VERIFY=/tmp/opencode-mem-verify
+FORK=/Users/vova/code/opencode-mem-work
+VERIFY=/Users/vova/code/opencode-mem-verify
 REPO=https://github.com/gpt-mem/opencode-mem.git
 BRANCH=main
 LOG_DIR=~/.opencode/scripts/build-logs
@@ -66,10 +66,8 @@ FULL_SHA=$(git rev-parse HEAD)
 SHA12=$(git rev-parse --short=12 HEAD)
 echo "HEAD: $FULL_SHA ($SHA12) branch=$BRANCH" | tee -a "$LOG"
 
-# --- 2. Зависимости (быстро, если уже стоят) ---
-if [ ! -d node_modules ]; then
-  bun install >> "$LOG" 2>&1 || { echo "bun install FAILED" | tee -a "$LOG"; exit 1; }
-fi
+# --- 2. Зависимости (всегда — node_modules может быть неполным, см. build exit=70) ---
+bun install >> "$LOG" 2>&1 || { echo "bun install FAILED" | tee -a "$LOG"; exit 1; }
 
 # --- 3. Сборка кандидата (v2-раскладка) ---
 # Версия вшивается в бинарь через OPENCODE_VERSION (packages/cli/src/version.ts
