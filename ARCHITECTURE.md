@@ -1,6 +1,6 @@
 # OpenCode MEM — Operational Memory Architecture
 
-Status: **v2-линия `main`** (порт апстрима v2.1.0, tip `f62df808f3`); экономия токенов через штатное v2-усечение вывода тулов + компактификацию + **проекцию контекста** (`session/memory-context.ts`) и **Unified Mask ledger** (`session/cache-mark-ledger.ts`) — обе уже в `main`; ядро оперативной памяти (mem_record + put/search/get) в `main`. Актуально 2026-10-24 (groom).
+Status: **v2-линия `main`** (порт апстрима v2.1.0, tip `fc88221b42`); экономия токенов через штатное v2-усечение вывода тулов + компактификацию + **проекцию контекста** (`session/memory-context.ts`) и **Unified Mask ledger** (`session/cache-mark-ledger.ts`) — обе уже в `main`; ядро оперативной памяти (mem_record + put/search/get) в `main`. Актуально 2026-10-24 (groom).
 Architecture home: `gpt-mem/opencode-mem-architecture`; implementation: `gpt-mem/opencode-mem`, целевая линия `main`.
 
 ## 1. Goal and scope
@@ -18,9 +18,9 @@ This product is optimized first for small/cheap coding agents that need straight
 **Новые изменения с прошлого groom (2026-10-24):**
 - **PR #209 merged**: `cache-mark-wire` (tip `49f55f2c8d`, issue #202 step 4/5 + integration tests) — чистый модуль проекции `packages/core/src/session/cache-mark.ts` (dual FNV-1a `prefixHash`, `messagePrefixHash`, `markIndexFor` fail-safe: нет строки → 0; hash mismatch / history shrunk → verbatim; `verbatimPrefixLength`, `recordUsage`, `reset`), `onUsage` wiring в `runner/step.ts` + `llm.ts` (берёт `sentCount` из `verbatimPrefixLength`), расширенные тесты `cache-mark.test.ts` (17 pure) + `cache-mark-ledger.test.ts` (fail-safe: history shrunk / hash mismatch). **Влито в `main`** (squash `49f55f2c8d`).
 - **`af911f05fc`**: PII-redaction в превью компакт-маркера + фикс single-line preview truncation (обрезал по строкам, а не по символам — дублировал весь контент для однострочных выводов). Закрывает 2 падающих теста в `memory-context.test.ts`.
-- **`af911f05fc`**: PII-redaction в превью компакт-маркера + фикс single-line preview truncation (обрезал по строкам, а не по символам — дублировал весь контент для однострочных выводов). Закрывает 2 падающих теста в `memory-context.test.ts`.
-- **`groom/2026-10-24-mem-debug-log`** (`f05920ca7a`): новый хелпер `packages/core/src/session/mem-debug-log.ts` — `[mem-context]`/`[intent-tracker]` лог уходит в файл рядом с server-логами (`Global.Path.log`), а не в stdout (иначе утекает в TUI, issue #45); мелкий фикс env-фолбэка в `memory-context.ts` (`OPENCODE_MEMORY_FIRST_DELIVERY_TOOLS`).
-- **`groom/2026-10-24-dirty-state`** (`3b620b068b`): сохранено грязное состояние ветки `cache-mark-wire` (bun.lock, package.json, llm.ts, step.ts, удалён patch photon-node).
+- **`f05920ca7a`**: `groom/2026-10-24-mem-debug-log` — новый хелпер `packages/core/src/session/mem-debug-log.ts` — `[mem-context]`/`[intent-tracker]` лог уходит в файл рядом с server-логами (`Global.Path.log`), а не в stdout (иначе утекает в TUI, issue #45); мелкий фикс env-фолбэка в `memory-context.ts` (`OPENCODE_MEMORY_FIRST_DELIVERY_TOOLS`).
+- **`3b620b068b`**: `groom/2026-10-24-dirty-state` — сохранено грязное состояние ветки `cache-mark-wire` (bun.lock, package.json, llm.ts, step.ts, удалён patch photon-node).
+- **`fc88221b42`**: `groom: save dirty state` — последняя локальная пара комфортных изменений в main (bun.lock + react dep, cli deps reorder) перед текущим groom-версией.
 
 | Компонент | Что добавлено | Файл в коде | Как включить | Статус |
 |---|---|---|---|---|
@@ -64,7 +64,7 @@ This product is optimized first for small/cheap coding agents that need straight
 
 ### Состояние линии (2026-10-24, groom прогона)
 
-- Форк `gpt-mem/opencode-mem`, линия `main`, tip `49f55f2c8d` (PR #209 squash: cache-mark-wire в main; до него merge `groom/2026-10-23-cleanup` `57bfddbe69` — CacheMarkLedger связан с проекцией). **Открытых PR — 0**. Закрыты после прошлого прогона: #194 (ранжирование поиска, PR #201), #199 (скоуп списков сессий по репозиторию, PR #200).
+- Форк `gpt-mem/opencode-mem`, линия `main`, tip `fc88221b42` (groom: save dirty state; PR #209 squash `49f55f2c8d`: cache-mark-wire в main; до него merge `groom/2026-10-23-cleanup` `57bfddbe69` — CacheMarkLedger связан с проекцией). **Открытых PR — 0**. Закрыты после прошлого прогона: #194 (ранжирование поиска, PR #201), #199 (скоуп списков сессий по репозиторию, PR #200).
 - **Groom-ветки с сохранённой работой** (все на remote; локально ничего не держим): `groom/2026-10-24-dirty-state` (сохранено грязное состояние `cache-mark-wire`: bun.lock, package.json, llm.ts, step.ts, удалён patch photon-node), `groom/2026-10-24-mem-debug-log` (новый `session/mem-debug-log.ts` — вынести `[mem-context]`-лог в файл, а не в stdout, + мелкий фикс env-фолбэка в `memory-context.ts`), `groom/2026-10-23-cleanup` (в `main`), `groom/2026-10-23-stash-cache-mark-ledger-v2`, `groom/2026-10-22-v2-memctx-ab-harness`, `feature/cache-mark-ledger-v2`, `fix-cache-mark-ledger-layer` (в `main` через PR #208) и др.
 - Порты апстрима: **v2.1.0** — слит (PR #171); **v2.1.1** — не начат, 0 из 11 PORT-коммитов в `main` (#185, ждём решений по 21 пункту ASK); **v2.1.2** — не начат, 0 из 20 (#189, ждём 26 пунктов ASK); **v2.1.3** — разобран, 0 из 33 (#207, ждём 122 пункта ASK). Блокер один — решения человека.
 - v1-линия: `memory-context-v1` (tip `7a65cc2541`) и архивная `archive-v1-line` — на remote; три компонента эпика #202 уже перенесены в `main` (см. таблицу выше).
