@@ -39,15 +39,22 @@ Mechanism verified live: variant debug log `compacted=1…6 mark=1`, baseline 0 
 
 Numbers were taken on the candidate; the active `~/.opencode/bin/opencode` is still `49f55f2c8d`. Per "merged ≠ available", the item stays open until #210 is merged and promoted by the chain, then a short re-run on the installed binary.
 
-#### 4. Merge blocked by token scope
+#### 4. Merge blocked by token scope → then merged
 
-The `gh` PAT is fine-grained with Contents:write only: `mergePullRequest` → *Resource not accessible*. PR #210 was created through the engineering-skills token (repo scope), but that MCP exposes no merge tool. PR left open + green with acceptance numbers in #202. Recovery refs: branch `fix-marker-preview`, head `5fcbde0e44b9ec6adf7aa899fef12f396b20e212`, PR #210.
+The `gh` PAT is fine-grained with Contents:write only: `mergePullRequest` → *Resource not accessible*. PR #210 was created through the engineering-skills token (repo scope), but that MCP exposes no merge tool. The PR was left open + green with the acceptance numbers in #202 and **merged during the iteration** (squash `4ac826507b`, `main` now `4ac826507b`). Recovery refs: branch `fix-marker-preview`, head `5fcbde0e44b9ec6adf7aa899fef12f396b20e212`, PR #210.
+
+Post-merge CI on `4ac826507b`: 14 success / 14 skipped / **2 failure**, and both failures are bot workflows, not code — `triage` and `check-duplicates` die on `Model not found: opencode/gpt-5.4-mini` / `opencode/claude-sonnet-4-6`. Filed as **#214**: every new issue paints `main` red and issue triage/de-dup never runs.
 
 #### 5. New infra issue #212 — config apiKey is a pasted shell script
 
 `provider.ladder.options.apiKey` in `~/.config/opencode/opencode.json` and `base.json` is a pasted `node <<'NODE' … pbpaste …` helper (595 chars, 17 lines), not a token. Any run that does not find a credential in its own DB `credential` table sends that string as `Authorization: Bearer …` → `provider.transport` on every rung ("every rung failed"). Reproduced with an isolated DB; fixed for the run by copying the 3 `credential` rows from `opencode.db`. `mem-gpt/free` additionally returns `401 unauthorized` (separate provider outage). The 10:12 selftest (T1–T5 `exit=1`) is therefore **inconclusive infra**, not a code regression — the same installed binary answered normally at 11:00.
 
-#### 6. Selftest status
+#### 6. Triage closed 2 stale issues
+
+- **#190** (P0, mem-metrics measures v1 tables) — closed with live evidence: `mem-metrics-v2.sh` now returns non-empty sections (157 sessions / 49.8M in / 318.7M cache_read / 86.5 % cache hit; `get_tool_call_details` 1182 calls/24h; ledger `ladder | 2560 | 3`), the `metrics` step is in `run-mem-chain.sh:161`.
+- **#191** (release notes document non-existent v1 flags) — closed: deployed `run-releaser.sh` lines 139–147 name `OPENCODE_V2_MEMORY_CONTEXT` / `_MIN_CHARS` / `_TOOLS` / `_CONTEXT_DEBUG`, no `OPENCODE_CACHE_MASK` / `_MARK_IDLE_MS`.
+
+#### 7. Selftest status
 
 Latest log `selftest-20261024-101247.log`: all 5 turns `every rung failed`, no usable metrics, and the run is not in `chain-state.jsonl` (parallel-run registration gap again). `selftest-last.json` still reports the earlier green `094749` run — the "green state survives a red run" defect persists.
 
