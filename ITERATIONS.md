@@ -1,5 +1,67 @@
 # ITERATIONS.md – OpenCode MEM autonomous iteration log
 
+## 2026-10-24 (4th iteration)
+
+### Summary of work (one action: #202 step 6 — A/B acceptance on the installed binary; gate gap filed as #215)
+
+#### 1. State at start
+
+`origin/main` = `4ed28ca389a0` (includes #210 marker-preview fix + #213 gitignore); `candidate` = `installed` = `origin/main` (three SHAs agree). Chain green: prune → build → selftest → metrics → release. #202 steps 1–5 merged; step 6 (A/B acceptance) was the only open checklist item.
+
+#### 2. Step 6 measured on the promoted binary → closed
+
+Fixture 6×~8.4 KiB `partN.log`, needle `CM-9f2b41` in `part3.log`, prompt = exactly six `cat partN.log`, model `ladder/build`, isolated DB `opencode-bench-ab.db`, fresh `provider_cache_mark` per run, n=3/arm.
+
+| metric (median) | baseline (off) | variant (on) | Δ |
+|---|---|---|---|
+| provider-visible (session total) | 159 860 | 151 714 | **−5.1 %** |
+| uncached input | 11 124 | 6 663 | **−40.1 %** |
+| steady-state per-turn prompt (turn≥5) | 18 524 | 15 086 | **−18.6 %** |
+| output | 1 918 | 1 511 | −21.2 % |
+| provider turns / tool calls | 10 / 9 | 11 / 10 | +1 |
+| cost | 0 | 0 | = |
+| needle-recall | 3/3 | 3/3 | **100 %** |
+
+Live mechanism: variant debug-log `compacted=6…7 mark=1…3` (suffix-only, mark pinned to the verbatim prefix = append-only); ledger row `ladder | mark_tokens=15736 | mark_index=1 | prefix_hash=40052b4c5bda`. Both arms found the needle; variant via `get_tool_call_details` (×2) → the compact marker has a working recovery path.
+
+**Honest caveat:** the session-level net is −5.1 %, not the −17.6 % of the 3rd iteration, because the variant takes one extra turn (recovery: `get_tool_call_details`×2 + read + grep). The per-turn prompt is reliably −18.6 % smaller; the extra turn eats part of the saving. The baseline shell layer already truncates tool output to ~2 KiB, so the ceiling in this scenario is bounded.
+
+Benchmark sessions (`memory-context-v2-acceptance`): baseline `sess_1792834327835_4ae758b2`, `sess_1792834459255_88d580dd`, `sess_1792834688044_cbcd8c8e`; variant `sess_1792834804123_01eeaca0`, `sess_1792834940436_87317a80`, `sess_1792835059751_2e874737`. Step 6 ticked in #202; measurement comment posted.
+
+#### 3. New finding → issue #215 (promotion gate never enables the projection)
+
+`run-selftest.sh` and `run-mem-chain.sh` contain **0** references to `OPENCODE_V2_MEMORY_*`; only `run-releaser.sh` advertises the flags. Selftest session `ses_selftest-20261024-120639` has **0** `[mem:compacted tool result]` markers and 5 shell truncation markers, while live agent sessions have **463** compaction markers. So the promotion gate verifies the shell marker, not the MEM projection — a regression in `memory-context.ts` / `cache-mark.ts` / the `runner/llm.ts` hook would pass the gate green. Filed **#215** with the fix (run turns with the flag on + scoped `[mem:compacted]` and `provider_cache_mark` checks).
+
+#### 4. Selftest log observations (12:06 run, candidate `4ed28ca389a0`)
+
+- `candidate=4ed28ca389a0` but `installed=49f55f2c8d` at check time (release runs after selftest) — the acceptance line still records it without gating (#195).
+- `=== SELFTEST … DONE ===` is printed **before** the last three checks (#195).
+- `needle retrieved — ok (CM-5581-A)` is unscoped: `strings -a <db> <db>-wal | grep` over the whole DB, and the needle sits in the T4 prompt → green by construction (#197).
+- T1 (this run) did not dump the source and instead named the recovery path (`get_tool_call_details(call_id=…)`) — no hallucinated line this run; the model's answer is a summary, and the harness still checks only the marker.
+- selftest logs remain mode `0644`; older logs (`20261021-110731`, `20261022-060252`) still contain a pasted `apiKey` (T1 used to `cat` the provider config). Residual exposure, not new.
+
+### Commit log (relevant)
+- Code unchanged this iteration (measurement only) — no PR.
+- `4ed28ca389a0` chore(gitignore) — current `origin/main` = installed binary.
+
+### Files changed (relevant)
+- (docs repo) `ITERATIONS.md` — this entry.
+- Benchmark artifacts: `~/.opencode/benchmarks/sess_*` + `~/.opencode/benchmarks.db` (6 sessions).
+- Fixture/runner: `$TMPDIR/opencode/mem-ab/{run_ab.sh,summary.py,ab-*/}`.
+
+### Peer issues/PRs
+- #202 — unified mask (v2): steps 1–6 now all `[x]`; measurement comment posted.
+- #215 — new: promotion gate does not exercise the projection.
+- #195 / #197 — acceptance harness defects (DONE ordering, `exit≠0` not a failure, unscoped needle) — still open.
+- #214 — bot workflows paint `main` red on every issue (`Model not found`), so issue triage/de-dup never runs.
+
+### Next steps
+1. Implement #215: enable `OPENCODE_V2_MEMORY_CONTEXT=1` in the selftest turns and add scoped compaction + ledger checks, so the chain verifies the core feature.
+2. Reduce the recovery-turn cost / re-measure at steady state (the −5.1 % net is dominated by one extra turn).
+3. Port the remaining memory tooling (`get_tool_call_overview`, `find_tool_calls`, `find_pii`, indexing) — P1, after the gate covers the projection.
+
+---
+
 ## 2026-10-24 (3rd iteration)
 
 ### Summary of work (one action: #202 step 6 acceptance — measured A/B on the live agent, blocker found & fixed)
@@ -189,4 +251,4 @@ Latest log `selftest-20261024-101247.log`: all 5 turns `every rung failed`, no u
 - What are the exact token scopes needed for PR/comment? GraphQL scopes: `write:repository`? Need to investigate GitHub fine‑grained token docs.
 
 ---
-Last updated: 2026-10-24 | iteration priority: ledger acceptance (v2) + build fix + A/B benchmarks
+Last updated: 2026-10-24 | iteration priority: gate coverage for the projection (#215) + recovery-turn cost
