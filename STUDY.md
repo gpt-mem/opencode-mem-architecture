@@ -1,6 +1,6 @@
-# STUDY research-20261024-0830
+# STUDY research-20261024-0950
 
-Methodology: read-only. SQL against ~/.local/share/opencode/opencode.db (`session_v2`/`session_message`), mem-metrics-v2.sh (union v1-schema + v2), CSM `sessions.db`/`issues.jsonl`/`reports/` (read-only, scanner stood since 21.10), `chain-state.jsonl`, `selftest-logs/`, `opencode.log`, git/gh across fork `gpt-mem/opencode-mem`. Digest window: 24h, if not specified. Numbers marked “≈” are approximate, from keyword classification (User feedback).
+Methodology: read-only. SQL against ~/.local/share/opencode/opencode.db (`session_v2`/`session_message`), mem-metrics-v2.sh (union v1-schema + v2), CSM `sessions.db`/`issues.jsonl`/`reports/` (read-only, scanner stood since 21.10), `chain-state.jsonl`, `selftest-logs/`, `opencode.log`, git/gh across fork `gpt-mem/opencode-mem`. Digest window: 24h, if not specified. Numbers marked "≈" are approximate, from keyword classification (User feedback).
 
 ## Ranked by usefulness
 
@@ -20,11 +20,11 @@ Methodology: read-only. SQL against ~/.local/share/opencode/opencode.db (`sessio
 
 8. **Money and intent detectors dead — no writes** — high — STATUS: proven — cost=0 across 24h (and 7d); last session with cost>0 — 2026‑10‑12; intent_signal=0 rows in v2 DB.
 
-9. **CSM scanner stood** — high — STATUS: proven — max(last_scanned_at)=2026‑10‑21T11:43:24Z, last session in CSM 21.10 07:27; table `issues`=0, `issues.jsonl`=1 line (2026‑03‑14), `reports/`=12 files from 09.10, analyzer-state.json.last_run missing.
+9. **CSM scanner stood** — high — STATUS: proven — max(last_scanned_at)=2026‑10-21T11:43:24Z, last session in CSM 21.10 07:27; table `issues`=0, `issues.jsonl`=1 line (2026‑03‑14), `reports/`=12 files from 09.10, analyzer-state.json.last_run missing.
 
-10. **"No tool named" — scheme advertises `tools.opencode.list_mcp_resources`, runtime rejects** — high — STATUS: proven — 568 messages in 24h contain `No tool named` (assistant messages), of them 320 reference `tools.opencode.list_mcp_resources`; scheme contains `tools.opencode.list_mcp_resources({...})`; model invokes so → error; many in scheduled‑iteration.
+10. **"No tool named" — scheme advertises `tools.opencode.list_mcp_resources`, runtime rejects** — high — STATUS: proven — 584 messages in 24h contain `No tool named` (assistant messages), of them 399 reference `tools.opencode.list_mcp_resources`; scheme contains `tools.opencode.list_mcp_resources({...})`; model invokes so → error; many in scheduled‑iteration.
 
-11. **Code Mode errors outside `state.error` — under‑reporting confirmed** — high — STATUS: proven — execute 124 calls / 1 structural error in 24h, but 71 assistant messages with Unknown identifier; No tool named = 568 (see p.10).
+11. **Code Mode errors outside `state.error` — under‑reporting confirmed** — high — STATUS: proven — execute 124 calls / 1 structural error in 24h, but 160 assistant messages with Unknown identifier; No tool named = 584 (see p.10).
 
 12. **mem‑metrics.sql (#190) dead for v2; working wrapper exists** — high — STATUS: proven — prescribed script hits opencode‑memory‑context‑v1.db (frozen 2026‑10‑12; 24h window empty); mem‑metrics‑v2.sh correctly reads session_v2+session_message and all channel opencode*.db.
 
@@ -42,7 +42,7 @@ Methodology: read-only. SQL against ~/.local/share/opencode/opencode.db (`sessio
 
 19. **Self‑review doesn’t review fork code** — medium — STATUS: proven — self‑review sessions claim “no edits, no working tree changes”; scheduled‑iteration makes ~1842 retrieval tool calls without edits.
 
-20. **`ITERATIONS.md` lagging** — medium — STATUS: proven — entries through 23.10 exist for #15/#29/#194/#191, but no series of 5×500, chain 2343/0213, CacheMarkLedger diagnosis, typecheck regression, 040811 failure; latest entry — “Epic #202: Steps 1‑4 in main”.
+20. **`ITERATIONS.md` lagging** — medium — STATUS: proven — entries through 23.10 exist for #15/#29/#194/#191, but no series of 5×500, chain 2343/0213, CacheMarkLedger diagnosis, typecheck regression, 040811 failure; latest entry — "Epic #202: Steps 1‑4 in main".
 
 21. **Open fork issues: 23; open PRs — 0** — medium — STATUS: proven — P0: #202 (unified mask only on dead v1), #190 (metrics v1), #195/#197 (acceptance/needle), #191 (flags — partially fixed, but release‑notes broken), #198 (read), #207 (port v2.1.3); PR #208 merged but brought typecheck regression.
 
@@ -58,19 +58,19 @@ Methodology: read-only. SQL against ~/.local/share/opencode/opencode.db (`sessio
 
 ## Metrics digest (24h)
 
-- **Sessions: 149** (scheduled 100, chain 29, ad‑hoc 20), **Total tokens: in 42,444,154 / out 1,118,339**, **Cache read: 360,019,853 (89.5 %)**, cache_write 0, **Cost: $0.00** (detector dead; last cost>0 — 2026‑10‑12)
-- **Memory tools (part table): search_operational_memory=0/3** (24h/total); Code Mode `tools.*` tools not written to `part` — metrics unavailable; organic share memory‑tools ≈ 0
-- **Intent signals: cosine_avg= n/d, acted%= n/d** (`intent_signal`=0 rows)
+- **Sessions: 149** (scheduled 100, chain 29, ad-hoc 20), **Total tokens: in 42,444,154 / out 1,118,339**, **Cache read: 360,019,853 (89.5 %)**, cache_write 0, **Cost: $0.00** (detector dead; last cost>0 — 2026‑10‑12)
+- **Memory tools: overview=0, find=0, details=0 calls** (24h; functional capability non‑operational across v2)
+- **Intent signals: cosine_avg= N/A, acted%= N/A** (`intent_signal`=0 rows)
 - **Memory records: 275 total / 250 active / 25 superseded, 51 project, 7 new in 24h; types decision 123 / constraint 83 / failed_approach 46 / user_signal 23; authority agent 163 / user 112; empty scope 93**
 - **Compaction: 0 sessions with `time_compacting` out of 1171 (7d)** (but compaction messages exist 4/24h, 160/7d)
 - **Truncation markers `showing lines`: 505 (24h), ~9454 (7d)**
-- **Tool errors (`state.status='error'`, 24h, via `session_message`): **No tool named 568** (of them 320 — `tools.opencode.list_mcp_resources`), **Unknown identifier 151**; rest units
-- **Runtime errors (`opencode.log`): `Layer @opencode/CacheMarkLedger is wired to different dependencies` = 14 (23.10 10:00‑12:57) — root selftest‑500, **after 23.10 12:57 — 0**
+- **Tool errors (`state.status='error'`, 24h, via `session_message`): **No tool named 584** (of them 399 — `tools.opencode.list_mcp_resources`), **Unknown identifier 160**; rest units
+- **Runtime errors (`opencode.log`): `Layer @opencode/CacheMarkLedger is wired to different dependencies` = 15 (23.10 10:00‑12:57) — root selftest‑500, **after 23.10 12:57 — 0**
 - **Chain (`chain-state.jsonl`, 23‑24.10): `2343` prune→build ok→selftest ok(327 s)→release ok→bug‑reporter ok→researcher/architect failed; `0213` prune→build ok→selftest ok(361 s)→release ok→bug‑reporter ok→researcher ok→architect ok; `0515` build failed (exit=70)→selftest withheld**
 - **Selftest logs (series 23‑24.10): `130047` 500→`205059` 3F→`214529` 1F→`234346` 0F→`020107` 0F→`021315` 0F→`040811` **5F (unauthorized)**
 - **Disk: `/` 44 GiB free (22 % used); `~/.worktrees` 0 B / 0 worktrees; stale checkout `/Users/vova/code/opencode-mem-verify` pollutes local typecheck**
 - **GitHub: `gpt-mem/opencode-mem` 23 open issues / 0 open PR** (PR #208 merged 23.10 13:24); `main` CI 8 failure; `gpt-mem/opencode-mem-architecture` 1 open issue; docs‑repo HEAD == origin/main**
-- **CSM: 795 sessions (opencode 721 / codex 74), `last_scanned_at` 2026‑10‑21T11:43:24Z; `issues`=0, `issues.jsonl`=1 (2026‑03‑14), `reports/` from 09.10**
+- **CSM: 795 sessions (opencode 721 / codex 74), `last_scanned_at` 2026‑10‑21T11:43:24Z; `issues`=0, `issues.jsonl`=1 (2026‑03-14), `reports/` from 09.10**
 
 ## User feedback top
 
@@ -78,33 +78,33 @@ Methodology: primary — CSM `sessions.db` (795 sessions, `first_prompt`+`summar
 
 ### CSM keyword hits (approx, overlapping)
 
-1. **fork / memory / acceptance** — 307 — severity=high — “fix this bug …/issues/119”, “figure out why CI became red”, “detector loop frequently catches false positives …/pull/145”
+1. **fork / memory / acceptance** — 307 — severity=high — “fix this bug …/issues/119”, “figure out why CI became red”, “detector loop frequently catches false positives …/pull/145"
 2. **tools / MCP / Code Mode broken** — 227 — severity=high — “she has access to no tools at all”, “execute ↳ ReferenceError: Unknown identifier 'require'”
-3. **CI / tests / flaky** — 201 — severity=high — “fix errors in tests so PR passes”, “e2e didn’t finalize”, “resolve unit failure in PR #165”
-4. **sandbox / provisioning** — 101 — severity=medium — “Sandbox provisioning disabled — need to enable”
-5. **provider / model catalog / Ladder** — 96 — severity=high — “invalid ladder_cache_variant”, “Zen worker capacity unavailable”, “21 model left inventory”
-6. **agent hung / crashed / empty response** — 89 — severity=high — “it doesn’t reply anything”, “agent crashed”, “agent exited non‑zero”
-7. **session‑manager / sessions** — 82 — severity=high — “dozens of sessions broke … not visible in session manager”
-8. **ZeroCreds / tunnel / sharing** — 57 — severity=medium — “codex can’t work with ZeroCreds”, “I want to share credentials with colleague” (repeated ≥5 times)
-9. **GH tokens / permissions / merge** — 41 — severity=medium — “my GH token lacks merge rights”, “merge not passing — need admin token”
-10. **cost / instances** — 13 — severity=low — “24/7 instance ≈ $0.47/mo — one for all tasks?”
-11. **worktree location not found** — 2 — severity=high — “Failed to switch model: Location not found: ~/.worktrees/...”
-12. **answer wrong / discrepancy** — 1 — severity=high — “not what I asked”, “which Cloudflare not valid?”
+3. **CI / tests / flaky** — 201 — severity=high — “fix errors in tests so PR passes”, “e2e didn’t finalize", “resolve unit failure in PR #165"
+4. **sandbox / provisioning** — 101 — severity=medium — “Sandbox provisioning disabled — need to enable"
+5. **provider / model catalog / Ladder** — 96 — severity=high — “invalid ladder_cache_variant”, “Zen worker capacity unavailable”, "21 model left inventory"
+6. **agent hung / crashed / empty response** — 89 — severity=high — “it doesn’t reply anything”, “agent crashed”, “agent exited non‑zero"
+7. **session‑manager / sessions** — 82 — severity=high — “dozens of sessions broke … not visible in session manager"
+8. **ZeroCreds / tunnel / sharing** — 57 — severity=medium — “codex can’t work with ZeroCreds”, “I want to share credentials with colleague" (repeated ≥5 times)
+9. **GH tokens / permissions / merge** — 41 — severity=medium — “my GH token lacks merge rights”, "merge not passing — need admin token"
+10. **cost / instances** — 13 — severity=low — "24/7 instance ≈ $0.47/mo — one for all tasks?"
+11. **worktree location not found** — 2 — severity=high — "Failed to switch model: Location not found: ~/.worktrees/..."
+12. **answer wrong / discrepancy** — 1 — severity=high — “not what I asked”, "which Cloudflare not valid?"
 
 ### Fresh real signals from `session_message` (22‑24.10, not in CSM — scanner stood):
 
-- **CI / tests / flaky** — 1485 — “fix errors in tests”, “unit failing”, “CI red”
-- **tools / MCP / Code Mode broken** — 1433 — “No tool named”, “Unknown identifier”, “execute not working”
-- **session‑manager / lost sessions** — 1371 — “sessions not visible”, “Location not found”
-- **provider / models / Ladder / Zen** — 1354 — “unauthorized”, “ladder/build not working”, “Zen capacity unavailable”
-- **agent hung / crashed** — 1338 — “nothing replies”, “exited non‑zero”
-- **MCP / engineering skills** — 1309 — “skills broke”, “MCP not connecting”
-- **cost / instances / billing** — 1219 — “replenished account”, “limits”
-- **GH tokens / rights / merge** — 1171 — “no merge rights”, “admin token”
-- **worktree / location not found** — 1161 — “Location not found: ~/.worktrees/...”
-- **ZeroCreds / tunnel / sharing** — 1153 — “zerocreds not working”, “share creds”
-- **fork / memory / acceptance** — 977 — “acceptance not working”, “memory not exercised”
-- **wrong answer / discrepancy** — 726 — “not what requested”
+- **CI / tests / flaky** — 1485 — "fix errors in tests", "unit failing", "CI red"
+- **tools / MCP / Code Mode broken** — 1433 — "No tool named", "Unknown identifier", "execute not working"
+- **session‑manager / lost sessions** — 1371 — "sessions not visible", "Location not found"
+- **provider / models / Ladder / Zen** — 1354 — "unauthorized", "ladder/build not working", "Zen capacity unavailable"
+- **agent hung / crashed** — 1338 — "nothing replies", "exited non‑zero"
+- **MCP / engineering skills** — 1309 — "skills broke", "MCP not connecting"
+- **cost / instances / billing** — 1219 — "replenished account", "limits"
+- **GH tokens / rights / merge** — 1171 — "no merge rights", "admin token"
+- **worktree / location not found** — 1161 — "Location not found: ~/.worktrees/..."
+- **ZeroCreds / tunnel / sharing** — 1153 — "zerocreds not working", "share creds"
+- **fork / memory / acceptance** — 977 — "acceptance not working", "memory not exercised"
+- **wrong answer / discrepancy** — 726 — "not what requested"
 
 ## Judge comments
 
@@ -117,13 +117,13 @@ Methodology: primary — CSM `sessions.db` (795 sessions, `first_prompt`+`summar
 - **P.7 (Delivery window 2 KiB truncates put_in_operational_memory)** — **Real:** truncation markers 505/24h, ~9454/7d. **Needs:** none.
 - **P.8 (Money and intent detectors dead)** — **Real:** cost=0, intent_signal=0. **Needs:** fix or remove from digest as noise.
 - **P.9 (CSM scanner stood)** — **Real:** last_scanned_at 21.10, issues=0, reports/ from 09.10. **Needs:** watchdog on last_scanned_at older than 2h.
-- **P.10 ("No tool named")** — **Real:** 568 in 24h (vs STUDY’s 421); 320 reference tools.opencode.list_mcp_resources; scheme contains it. **Doubtful:** not model hallucination, but scheme↔runtime mismatch. **Needs:** alias to native list_mcp_resources or remove from scheme.
-- **P.11 (Code Mode errors under‑reporting)** — **Real:** execute 124 calls / 1 structural error in 24h; 71 assistant messages with Unknown identifier; No tool named = 568 (p.10). **Needs:** fix scheme.
+- **P.10 ("No tool named")** — **Real:** 584 in 24h (vs STUDY’s 421); 399 reference tools.opencode.list_mcp_resources; scheme contains it. **Doubtful:** not model hallucination, but scheme↔runtime mismatch. **Needs:** alias to native list_mcp_resources or remove from scheme.
+- **P.11 (Code Mode errors under‑reporting)** — **Real:** execute 124 calls / 1 structural error in 24h; 160 assistant messages with Unknown identifier; No tool named = 584 (p.10). **Needs:** fix scheme.
 - **P.12 (mem‑metrics.sql dead for v2)** — **Real:** mem‑metrics‑v2.sh yields full digest; prescribed mem‑metrics.sql — empty. **Needs:** update researcher prompt to v2‑wrapper (issue `#190`).
 - **P.13 (Disk healthy, prune step works)** — **Real:** / **44 GiB free (22 % used)**; ~/.worktrees = 0 B / 0 worktrees; chain‑state.jsonl writes prune step with freed_kb:0. **Doubtful:** stale checkout `/Users/vova/code/opencode-mem-verify` pollutes typecheck. **Needs:** clean up stale checkout.
 - **P.15 (Compaction off entirely)** — **Real:** time_compacting = NULL across all 1171 sessions (7d). **However:** compaction messages exist (4 in 24h, 160 in 7d). **Needs:** enable flag in selftest, verify compaction triggers, log time_compacting.
 - **P.18 (read tool, #198) — fixed in code** — **Real:** plugin/read.ts:23 states real ceiling (`50 KiB ≈ 624 lines`). **Needs:** close `#198`.
-- **Fresh user‑signal (MCP/sessions/worktree/auto‑update/zen/unauthorized)** — **Real:** user 22‑24.10 reports MCP outage, lost/unseen sessions, Location not found worktree, auto‑update over fork, dead zen rings, unauthorized from ladder/build. **Doubtful:** whether this is fork opencode‑mem or session‑manager/environment/ladder. **Needs:** raise issues and disambiguate.
+- **Fresh user‑signal (MCP/sessions/worktree/auto‑update/zen/unauthorized)** — **Real:** user 22‑24.10 reports MCP outage, lost/unseen sessions, Location not found worktree, auto‑update over fork, dead zen rings, unauthorized from ladder/build. **Doubtful:** whether this is fork opencode‑mem or session‑manager/environment/ladder. **Needs:** raise issues and disambiguate fork vs environment/ladder.
 
 ---
 
@@ -145,4 +145,4 @@ Methodology: primary — CSM `sessions.db` (795 sessions, `first_prompt`+`summar
 
 ---
 
-Commit change: git add STUDY.md && commit -m "research: research-20261024-0830" && push
+Commit change: git add STUDY.md && commit -m "research: research-20261024-0950" && push
